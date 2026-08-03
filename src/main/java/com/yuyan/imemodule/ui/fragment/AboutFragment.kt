@@ -76,6 +76,9 @@ class AboutFragment : PreferenceFragmentCompat() {
             addPreference(R.string.source_code, R.string.github_repo) {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CustomConstant.YUYAN_IME_REPO)))
             }
+            addPreference(R.string.upstream_source, R.string.upstream_repo) {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CustomConstant.UPSTREAM_IME_REPO)))
+            }
             addPreference(R.string.license, "GPL-3.0 license ") {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CustomConstant.LICENSE_URL)))
             }

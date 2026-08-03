@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
-    <string name="ime_yuyan_name">语燕输入法</string>
-    <string name="ime_yuyan_name_debug">语燕输入法</string>
+    <string name="ime_yuyan_name">语燕SelfOpt</string>
+    <string name="ime_yuyan_name_debug">语燕SelfOpt</string>
     <!--设置页面-->
     <string name="setting_ime_sdk">输入法设置</string>
     <string name="setting_ime_input">输入设置</string>
@@ -88,6 +88,8 @@
     <string name="privacy_policy_cancel">拒绝</string>
     <string name="license">开放许可</string>
     <string name="github_repo">GitHub 仓库</string>
+    <string name="upstream_source">上游项目</string>
+    <string name="upstream_repo">gurecn/YuyanIme</string>
     <string name="reset">重置</string>
     <string name="theme">主题</string>
 
