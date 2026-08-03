@@ -8,9 +8,12 @@ import java.io.File
 /**
  * 自定义主题背景图的解码缓存。
  *
- * 背景图按键盘尺寸存盘，1080p 下单张 ARGB_8888 约 4.7MB。原实现每次取用都重新
- * 解码且不关闭输入流，而取用点包括主题切换、日夜切换以及主题列表的每次滚动绑定，
- * 极易造成 GC 抖动。键盘背景不需要透明通道，统一按 RGB_565 解码，内存再减半。
+ * 背景图按键盘尺寸存盘，1080p 下单张约 4.7MB。原实现每次取用都重新解码且不关闭
+ * 输入流，而取用点包括主题切换、日夜切换以及主题列表的每次滚动绑定，极易造成 GC
+ * 抖动。缓存解码结果即可消除该开销。
+ *
+ * 保持 ARGB_8888 解码：裁剪结果以 PNG 无损保存（见 CustomThemeActivity），用户选用
+ * 带透明通道的图片时 alpha 有效，降为 RGB_565 会让透明区域变黑，渐变也会出现色带。
  */
 object ThemeBackgroundCache {
 
@@ -24,10 +27,7 @@ object ThemeBackgroundCache {
         cache.get(path)?.let { if (!it.isRecycled) return it }
         val file = File(path)
         if (!file.exists()) return null
-        val options = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        val bitmap = file.inputStream().use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+        val bitmap = file.inputStream().use { BitmapFactory.decodeStream(it) } ?: return null
         cache.put(path, bitmap)
         return bitmap
     }

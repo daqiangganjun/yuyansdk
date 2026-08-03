@@ -34,6 +34,9 @@ class Launcher {
      * 可以在子线程初始化的操作
      */
     private fun onInitDataChildThread() {
+        // 建库与默认数据写入走独立调度，不排在词库复制之后，否则首次安装时
+        // 侧符号栏与候选栏菜单会在整个复制期间为空
+        DataBaseKT.preload()
         ThreadPoolUtils.executeSingleton {
             // 复制词库文件
             val dataDictVersion = AppPrefs.getInstance().internal.dataDictVersion.getValue()
@@ -45,8 +48,6 @@ class Launcher {
             }
             Kernel.resetIme()  // 解决词库复制慢，导致先调用初始化问题
             YuyanEmojiCompat.init(context)
-            // 建库与迁移放在后台完成，避免阻塞 Application.onCreate 所在的主线程
-            DataBaseKT.instance.sideSymbolDao().getAllSideSymbolPinyin()
             //初始化键盘主题
             val isFollowSystemDayNight = prefs.followSystemDayNightTheme.getValue()
             if (isFollowSystemDayNight) {

@@ -20,9 +20,15 @@ object SkbMenuCache {
     fun barMenus(): List<SkbFun> {
         barMenus?.let { return it }
         return synchronized(this) {
-            barMenus ?: DataBaseKT.instance.skbFunDao().getALlBarMenu().also {
-                barMenus = it
-                barMenuNames = it.mapTo(HashSet(it.size)) { menu -> menu.name }
+            barMenus ?: run {
+                val loaded = DataBaseKT.instance.skbFunDao().getALlBarMenu()
+                // 首次安装时默认菜单可能尚未写入，空结果不入缓存，
+                // 否则这一瞬时状态会被固化到进程结束
+                if (loaded.isNotEmpty()) {
+                    barMenus = loaded
+                    barMenuNames = loaded.mapTo(HashSet(loaded.size)) { menu -> menu.name }
+                }
+                loaded
             }
         }
     }
@@ -31,8 +37,9 @@ object SkbMenuCache {
      * 菜单项是否已固定在候选栏上。供列表绑定时判断，避免逐项查库。
      */
     fun isBarMenu(name: String): Boolean {
-        if (barMenuNames == null) barMenus()
-        return barMenuNames?.contains(name) == true
+        barMenuNames?.let { return it.contains(name) }
+        // 尚未建立缓存（含默认数据未写入的情况），直接以本次查询结果为准
+        return barMenus().any { it.name == name }
     }
 
     fun invalidate() {

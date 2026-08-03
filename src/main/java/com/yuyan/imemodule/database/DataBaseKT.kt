@@ -17,7 +17,10 @@ import com.yuyan.imemodule.database.entry.SideSymbol
 import com.yuyan.imemodule.database.entry.SkbFun
 import com.yuyan.imemodule.database.entry.UsedSymbol
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
-import com.yuyan.imemodule.utils.thread.ThreadPoolUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
 @Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 5, exportSchema = false)
@@ -28,6 +31,9 @@ abstract class DataBaseKT : RoomDatabase() {
     abstract fun phraseDao(): PhraseDao
     abstract fun skbFunDao(): SkbFunDao
     companion object {
+
+        // 默认数据初始化专用，与词库复制所在的单线程执行器解耦
+        private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -69,19 +75,26 @@ abstract class DataBaseKT : RoomDatabase() {
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
-                    ThreadPoolUtils.executeSingleton {
-                        initDb()
-                    }
+                    initScope.launch { initDb() }
                 }
 
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
-                    ThreadPoolUtils.executeSingleton {
-                        initPhrasesDb()
-                    }
+                    initScope.launch { initPhrasesDb() }
                 }
             })
             .build()
+
+        /**
+         * 触发建库与默认数据写入。
+         *
+         * 必须独立于词库复制所用的单线程执行器：词库约 120MB，两者共用执行器会把
+         * 侧符号、常用语与候选栏菜单的默认数据初始化推迟到复制完成之后，期间唤起
+         * 输入法会看到空的侧符号栏与候选栏菜单。
+         */
+        fun preload() {
+            initScope.launch { instance.sideSymbolDao().getAllSideSymbolPinyin() }
+        }
         private fun initDb() {  //初始化数据库数据
             val symbolPinyin = listOf("，", "。", "？", "！", "……", "：", "；", ".").map {  symbolKey->
                 SideSymbol(symbolKey, symbolKey)
@@ -127,6 +140,8 @@ abstract class DataBaseKT : RoomDatabase() {
                     SkbFun(name = SkbMenuMode.TextEdit.name, isKeep = 0, position = 15),
                 )
                 instance.skbFunDao().insertAll(skbFuns)
+                // 默认菜单写入前若已有读取，缓存中会是空结果，此处使其失效
+                SkbMenuCache.invalidate()
             }
         }
     }
