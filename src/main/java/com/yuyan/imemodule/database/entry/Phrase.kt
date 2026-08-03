@@ -2,9 +2,14 @@ package com.yuyan.imemodule.database.entry
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "phrase")
+// 三个编码列是按键路径上的查询条件，无索引会导致每次击键全表扫描
+@Entity(
+    tableName = "phrase",
+    indices = [Index("t9"), Index("qwerty"), Index("lx17")]
+)
 data class Phrase(
     @PrimaryKey
     @ColumnInfo(name = "content")

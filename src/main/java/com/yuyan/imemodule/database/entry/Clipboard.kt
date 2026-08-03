@@ -2,9 +2,11 @@ package com.yuyan.imemodule.database.entry
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "clipboard")
+// time 是 deleteOldest 排序子查询的依据
+@Entity(tableName = "clipboard", indices = [Index("time")])
 data class Clipboard(
     @PrimaryKey
     @ColumnInfo(name = "content")

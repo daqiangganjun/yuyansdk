@@ -364,9 +364,20 @@ object LX17PinYinUtils {
                 pinyin.add(value)
             }
         }
-        return pinyin.joinToString(",") { it }.split(",").toTypedArray()
+        return pinyin.flatMap { it.split(',') }.toTypedArray()
     }
 
+    // lx17PinyinMap 的反向索引：拼音 -> 键码，避免每次调用逐条 split 线性扫描
+    private val keyByPinyin: Map<String, String> by lazy {
+        HashMap<String, String>(lx17PinyinMap.size * 4).apply {
+            for ((key, value) in lx17PinyinMap) {
+                for (pinyin in value.split(',')) {
+                    // 保留首个匹配，与原线性扫描的语义一致
+                    if (pinyin !in this) put(pinyin, key)
+                }
+            }
+        }
+    }
 
     /**
      * 获取拼音拼音对应的键码
@@ -375,13 +386,7 @@ object LX17PinYinUtils {
         if (sequence.isNullOrEmpty()) {
             return ""
         }
-        for ((key, value) in lx17PinyinMap) {
-            val pinyinList = value.split(",")
-            if (pinyinList.any { it == sequence }) {
-                return key
-            }
-        }
-        return ""
+        return keyByPinyin[sequence] ?: ""
     }
 
     fun pinyin2Lx17Key(pinyin: Char): String = lx17KeyMap[pinyin]?:pinyin.toString()

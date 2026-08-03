@@ -273,22 +273,28 @@ object T9PinYinUtils {
                 pinyin.add(value)
             }
         }
-        return pinyin.joinToString(",") { it }.split(",").toTypedArray()
+        return pinyin.flatMap { it.split(',') }.toTypedArray()
     }
 
+    // pinyinMap 的反向索引：拼音 -> 键码。原实现逐条 split 线性扫描 225 个条目，
+    // 单次调用会产生数百个临时对象，而该方法位于按键与回退路径上
+    private val keyByPinyin: Map<String, String> by lazy {
+        HashMap<String, String>(pinyinMap.size * 4).apply {
+            for ((key, value) in pinyinMap) {
+                for (pinyin in value.split(',')) {
+                    // 保留首个匹配，与原线性扫描的语义一致
+                    if (pinyin !in this) put(pinyin, key)
+                }
+            }
+        }
+    }
 
     /**
      * 获取拼音对应的键码
      */
     fun pinyin2Key(sequence: String?): String {
         if (sequence.isNullOrEmpty()) return ""
-        for ((key, value) in pinyinMap) {
-            val pinyinList = value.split(",")
-            if (pinyinList.any { it == sequence }) {
-                return key
-            }
-        }
-        return ""
+        return keyByPinyin[sequence] ?: ""
     }
 
     fun pinyin2T9Key(pinyin: Char): Char = t9KeyMap[pinyin]?:pinyin

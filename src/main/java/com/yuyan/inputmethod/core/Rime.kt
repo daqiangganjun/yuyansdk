@@ -3,7 +3,6 @@ package com.yuyan.inputmethod.core
 import android.content.Context
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.application.Launcher
-import kotlin.system.measureTimeMillis
 
 class Rime(fullCheck: Boolean) {
 
@@ -26,8 +25,12 @@ class Rime(fullCheck: Boolean) {
             System.loadLibrary("yuyanime")
         }
 
+        // 页大小是 session 级配置，只需在引擎启动与方案切换后各设置一次
+        private const val PAGE_SIZE = 100
+
         fun startup(context: Context, fullCheck: Boolean) {
             startupRime(context, CustomConstant.RIME_DICT_PATH, CustomConstant.RIME_DICT_PATH, fullCheck)
+            setRimePageSize(PAGE_SIZE)
             updateStatus()
         }
 
@@ -38,17 +41,20 @@ class Rime(fullCheck: Boolean) {
         }
 
         fun updateStatus() {
-            measureTimeMillis {
-                mStatus = getRimeStatus() ?: RimeStatus()
-            }
+            mStatus = getRimeStatus() ?: RimeStatus()
         }
 
         fun updateContext() {
-            measureTimeMillis {
-                mContext = getRimeContext() ?: RimeContext()
-            }
+            mContext = getRimeContext() ?: RimeContext()
             updateStatus()
         }
+
+        /**
+         * 当前候选词。读取 updateContext() 已缓存的结果，避免重复跨 JNI 编组整页候选。
+         */
+        @JvmStatic
+        val candidates: Array<CandidateListItem>
+            get() = mContext?.candidates ?: arrayOf()
 
         @JvmStatic
         val isComposing get() = mStatus?.isComposing == true
@@ -74,7 +80,6 @@ class Rime(fullCheck: Boolean) {
         @JvmStatic
         fun processKey(keycode: Int, mask: Int): Boolean {
             if (keycode <= 0 || keycode == 0xffffff) return false
-            setRimePageSize(100)
             return processRimeKey(keycode, mask).also {
                 updateContext()
             }
@@ -107,6 +112,7 @@ class Rime(fullCheck: Boolean) {
         @JvmStatic
         fun selectSchema(schemaId: String): Boolean {
             return selectRimeSchema(schemaId).also {
+                setRimePageSize(PAGE_SIZE)
                 updateContext()
             }
         }

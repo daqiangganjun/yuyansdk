@@ -6,13 +6,15 @@ import com.yuyan.imemodule.data.flower.simplified2HotPreset
 import java.util.regex.Pattern
 
 object StringUtils {
+
+    // isLetter 位于每次按键的处理路径上，改用字符判断避免重复编译正则与创建 Matcher
     /**
      * 判断字符串是不是字母
      */
     @JvmStatic
     fun isLetter(str: String?): Boolean {
-        val pattern = Pattern.compile("[a-zA-Z]*")
-        return pattern.matcher(str.toString()).matches()
+        if (str == null) return false
+        return str.all { it in 'a'..'z' || it in 'A'..'Z' }
     }
 
     /**
@@ -20,20 +22,22 @@ object StringUtils {
      */
     @JvmStatic
     fun isEnglishWord(str: String?): Boolean {
-        val pattern = Pattern.compile("[a-zA-Z ]*")
-        return pattern.matcher(str.toString()).matches()
+        if (str == null) return false
+        return str.all { it in 'a'..'z' || it in 'A'..'Z' || it == ' ' }
     }
+
+    private val NUMBER_PATTERN: Pattern = Pattern.compile("^[+-]?\\d*(\\.\\d*)?\$")
 
     @JvmStatic
     fun isNumber(str: String?): Boolean {
         if(str.isNullOrBlank())return false
-        val pattern = Pattern.compile("^[+-]?\\d*(\\.\\d*)?\$")
-        return pattern.matcher(str).matches()
+        return NUMBER_PATTERN.matcher(str).matches()
     }
 
+    // 判断末位是否为 CJK 统一表意文字（U+4E00..U+9FFF）
     fun isChineseEnd(input: String): Boolean {
-        val chineseEndPattern = "[\\u4e00-\\u9fff]\$".toRegex()
-        return chineseEndPattern.find(input) != null
+        val last = input.lastOrNull() ?: return false
+        return last in '一'..'鿿'
     }
 
     // 标点全角半角关系

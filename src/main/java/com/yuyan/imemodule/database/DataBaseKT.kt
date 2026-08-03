@@ -20,7 +20,7 @@ import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.utils.thread.ThreadPoolUtils
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
-@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 4, exportSchema = false)
+@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 5, exportSchema = false)
 abstract class DataBaseKT : RoomDatabase() {
     abstract fun sideSymbolDao(): SideSymbolDao
     abstract fun clipboardDao(): ClipboardDao
@@ -48,11 +48,24 @@ abstract class DataBaseKT : RoomDatabase() {
             }
         }
 
+        // 索引名必须与 @Index 生成的名称一致，否则 Room 的 schema 校验不通过
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_phrase_t9 ON phrase (t9)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_phrase_qwerty ON phrase (qwerty)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_phrase_lx17 ON phrase (lx17)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_clipboard_time ON clipboard (time)")
+            }
+        }
+
+        // allowMainThreadQueries 暂予保留：热路径查询已逐个消除，但设置类界面仍有
+        // 同步调用，直接移除会在遗漏处抛异常，对常驻输入法风险过高
         val instance = Room.databaseBuilder(Launcher.instance.context, DataBaseKT::class.java, "ime_db")
             .allowMainThreadQueries()
             .addMigrations(MIGRATION_1_2)
             .addMigrations(MIGRATION_2_3)
             .addMigrations(MIGRATION_3_4)
+            .addMigrations(MIGRATION_4_5)
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
