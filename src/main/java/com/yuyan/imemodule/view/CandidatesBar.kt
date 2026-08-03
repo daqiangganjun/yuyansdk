@@ -24,7 +24,7 @@ import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
 import com.yuyan.imemodule.data.menuSkbFunsPreset
 import com.yuyan.imemodule.data.theme.ThemeManager
-import com.yuyan.imemodule.database.DataBaseKT
+import com.yuyan.imemodule.database.SkbMenuCache
 import com.yuyan.imemodule.entity.SkbFunItem
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.KeyboardOneHandedMod
@@ -287,7 +287,8 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             mRightArrowBtn.drawable.setLevel(0)
             showViewVisibility(mCandidatesMenuContainer)
             val mFunItems: MutableList<SkbFunItem> = mutableListOf()
-            val barMenus = DataBaseKT.instance.skbFunDao().getALlBarMenu()
+            // 菜单配置极少变动，走进程内缓存，避免每次候选栏刷新都查库
+            val barMenus = SkbMenuCache.barMenus()
             for (item in barMenus) {
                 val skbMenuMode = SkbMenuMode.decode(item.name)
                 val skbFunItem = menuSkbFunsPreset[skbMenuMode]

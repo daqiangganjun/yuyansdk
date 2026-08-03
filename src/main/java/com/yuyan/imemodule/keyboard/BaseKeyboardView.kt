@@ -88,9 +88,28 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
         }
     }
 
+    /** 待重绘区域，由 [invalidateKey] 累积，绘制完成后清空 */
+    protected val mDirtyRect = Rect()
+
+    /**
+     * 整块键盘失效。用于主题、布局或按键状态成批变化的场景。
+     */
     fun invalidateKey() {
         mDrawPending = true
+        mDirtyRect.union(0, 0, width, height)
         invalidate()
+    }
+
+    /**
+     * 仅使指定按键所在区域失效。按下与抬起只影响单个按键，
+     * 无需重绘整块键盘。
+     */
+    protected fun invalidateKeys(first: SoftKey?, second: SoftKey?) {
+        if (first == null && second == null) return
+        mDrawPending = true
+        first?.let { mDirtyRect.union(it.mLeft, it.mTop, it.mRight, it.mBottom) }
+        second?.let { mDirtyRect.union(it.mLeft, it.mTop, it.mRight, it.mBottom) }
+        invalidate(mDirtyRect)
     }
 
     open fun onBufferDraw() {}
@@ -100,8 +119,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
             val keyboardSymbol = ThemeManager.prefs.keyboardSymbol.getValue()
             if (softKey.getkeyLabel().isNotBlank() && softKey.code != InputModeSwitcher.USER_KEYCODE_COMMA_EMOJI ) {
                 val keyLabel = if (InputModeSwitcher.isLower) softKey.keyLabel.lowercase() else softKey.keyLabel
-                val designPreset = setOf("，", "。", ",", ".")
-                val smallLabel = if(designPreset.any { it == keyLabel } || !keyboardSymbol) "" else softKey.getmKeyLabelSmall()
+                val smallLabel = if(keyLabel in NO_SMALL_LABEL_KEYS || !keyboardSymbol) "" else softKey.getmKeyLabelSmall()
                 val bounds = Rect(softKey.mLeft, softKey.mTop, softKey.mRight, softKey.mBottom)
                 popupComponent.showKeyboard(keyLabel, smallLabel, bounds)
                 mLongPressKey = true
@@ -151,7 +169,11 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
                 while (!motionEventQueue.isEmpty()) {
                     val first = motionEventQueue.poll()
                     if(first!= null) {
-                        result = onModifiedTouchEvent(MotionEvent.obtain(now, now, act, first.x, first.y, me.metaState))
+                        // obtain 取自全局对象池，用完必须归还，否则池耗尽后转为堆分配
+                        val up = MotionEvent.obtain(now, now, act, first.x, first.y, me.metaState)
+                        result = onModifiedTouchEvent(up)
+                        up.recycle()
+                        first.recycle()
                     }
                 }
                 dismissPreview()
@@ -312,14 +334,15 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
      * 显示短按气泡
      */
     private fun showPreview(key: SoftKey?) {
-        mCurrentKey?.onReleased()
+        val previous = mCurrentKey
+        previous?.onReleased()
         if (key != null) {
             key.onPressed()
             showBalloonText(key)
         } else {
             popupComponent.dismissPopup()
         }
-        invalidateKey()
+        invalidateKeys(previous, key)
     }
 
     /**
@@ -333,7 +356,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
         if (mCurrentKey != null) {
             mCurrentKey!!.onReleased()
             if(mService == null) return
-            invalidateKey()
+            invalidateKeys(mCurrentKey, null)
         }
         popupComponent.dismissPopup()
         lastEventX = -1f
@@ -341,6 +364,10 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
 
     open fun closing() {
         removeMessages()
+        // 未配对到 UP 的按下事件需归还对象池
+        while (!motionEventQueue.isEmpty()) {
+            motionEventQueue.poll()?.recycle()
+        }
     }
 
     private fun showBalloonText(key: SoftKey) {
@@ -364,6 +391,8 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     }
 
     companion object {
+        /** 这几个标点不显示右上角小标签 */
+        private val NO_SMALL_LABEL_KEYS = setOf("，", "。", ",", ".")
         private const val MSG_SHOW_PREVIEW = 1
         private const val MSG_REPEAT = 3
         private const val MSG_LONGPRESS = 4

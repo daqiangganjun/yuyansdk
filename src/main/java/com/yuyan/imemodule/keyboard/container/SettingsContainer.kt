@@ -12,6 +12,7 @@ import com.yuyan.imemodule.data.menuSkbFunsPreset
 import com.yuyan.imemodule.data.theme.Theme
 import com.yuyan.imemodule.data.theme.ThemeManager.activeTheme
 import com.yuyan.imemodule.database.DataBaseKT
+import com.yuyan.imemodule.database.SkbMenuCache
 import com.yuyan.imemodule.database.entry.SkbFun
 import com.yuyan.imemodule.entity.SkbFunItem
 import com.yuyan.imemodule.manager.InputModeSwitcher
@@ -89,10 +90,13 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                         }
                     }
                     adapter?.notifyItemMoved(fromPosition, toPosition)
-                    funItems.forEachIndexed {index, item ->
-                        DataBaseKT.instance.skbFunDao().update(SkbFun(name = item.skbMenuMode.name, isKeep = 0, position = index))
-                    }
+                    // 拖动过程中该回调会连续触发，落库推迟到 clearView（拖拽结束）执行一次
                     return true
+                }
+
+                override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                    super.clearView(recyclerView, viewHolder)
+                    persistMenuOrder()
                 }
 
                 override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
@@ -113,6 +117,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                     } else {
                         DataBaseKT.instance.skbFunDao().delete(SkbFun(name = v.skbMenuMode.name, isKeep = 1))
                     }
+                    SkbMenuCache.invalidate()
                     inputView.updateCandidateBar()
                     adapter?.notifyDataSetChanged()
                 }
@@ -122,6 +127,19 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
             adapter?.dragOverListener = null
         }
         adapter?.notifyDataSetChanged()
+    }
+
+    /**
+     * 将当前菜单顺序落库。整批放进单个事务，避免逐条各开一次写事务。
+     */
+    private fun persistMenuOrder() {
+        val ordered = funItems.mapIndexed { index, item ->
+            SkbFun(name = item.skbMenuMode.name, isKeep = 0, position = index)
+        }
+        val dao = DataBaseKT.instance.skbFunDao()
+        DataBaseKT.instance.runInTransaction {
+            ordered.forEach { dao.update(it) }
+        }
     }
 
     /**

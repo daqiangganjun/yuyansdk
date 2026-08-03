@@ -44,8 +44,10 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
     private var keyboardFontBold = false
     private var keyboardSymbol = false
     private var keyboardMnemonic = false
-    protected var mDirtyRect = Rect()
     private var skbStyleMode: SkbStyleMode = prefs.skbStyleMode.getValue()
+
+    // 按键背景复用同一实例，避免在绘制循环中为每个按键新建 Drawable
+    private val mKeyBackground = GradientDrawable()
 
     /**
      * 构造方法
@@ -77,12 +79,17 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      * 刷新按键状态
      */
     fun updateStates() {
-        var softKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_ENTER) as? SoftKeyToggle
-        softKey?.enableToggleState( if(mService!!.isAddPhrases)4 else InputModeSwitcher.mToggleStates.imeAction)
-        softKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_SHIFT_LEFT) as? SoftKeyToggle
+        val enterKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_ENTER) as? SoftKeyToggle
+        val enterChanged = enterKey?.enableToggleState( if(mService!!.isAddPhrases)4 else InputModeSwitcher.mToggleStates.imeAction) == true
+        val shiftKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_SHIFT_LEFT) as? SoftKeyToggle
         val isEnglishCell = AppPrefs.getInstance().input.abcSearchEnglishCell.getValue()
-        softKey?.enableToggleState(InputModeSwitcher.mToggleStates.modifiers + if(isEnglishCell) 3 else 0)
-        invalidateView()
+        val shiftChanged = shiftKey?.enableToggleState(InputModeSwitcher.mToggleStates.modifiers + if(isEnglishCell) 3 else 0) == true
+        // 无论哪种情况都不必重新测量整棵视图树：onMeasure 的结果只取决于 EnvironmentSingleton。
+        // Shift 会切换全部字母键的大小写显示，故需整块重绘；仅回车键变化时只重绘该键。
+        when {
+            shiftChanged -> invalidateKey()
+            enterChanged -> invalidateKeys(enterKey, null)
+        }
     }
 
     /**
@@ -118,7 +125,6 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        mDirtyRect.union(0, 0, width, height)
         if (mDrawPending || mBuffer == null || mKeyboardChanged) {
             onBufferDraw()
         }
@@ -133,10 +139,12 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
                 mBuffer = createBitmap(width, height)
                 mCanvas = Canvas(mBuffer!!)
             }
-            invalidateKey()
+            // 缓冲区重建后内容全部失效，直接标脏而不再触发一次 invalidate
+            mDirtyRect.union(0, 0, width, height)
             mKeyboardChanged = false
         }
         if (mSoftKeyboard == null) return
+        if (mDirtyRect.isEmpty) mDirtyRect.union(0, 0, width, height)
         mCanvas!!.withSave {
             val canvas = mCanvas
             canvas?.clipRect(mDirtyRect)
@@ -149,6 +157,9 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
                 else mSoftKeyboard!!.keyYMargin
             for (softKeys in mSoftKeyboard!!.mKeyRows) {
                 for (softKey in softKeys) {
+                    // 跳过完全落在脏区之外的按键
+                    if (softKey.mRight < mDirtyRect.left || softKey.mLeft > mDirtyRect.right ||
+                        softKey.mBottom < mDirtyRect.top || softKey.mTop > mDirtyRect.bottom) continue
                     canvas?.let { drawSoftKey(it, softKey, keyXMargin, keyYMargin.toInt()) }
                 }
             }
@@ -167,7 +178,7 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      * @param keyYMargin 按键上下边间距
      */
     private fun drawSoftKey(canvas: Canvas, softKey: SoftKey, keyXMargin: Int, keyYMargin: Int) {
-        val bg = GradientDrawable()
+        val bg = mKeyBackground
         bg.shape = GradientDrawable.RECTANGLE
         bg.cornerRadius = keyRadius.toFloat() // 设置圆角半径
         bg.setBounds(softKey.mLeft + keyXMargin, softKey.mTop + keyYMargin, softKey.mRight - keyXMargin, softKey.mBottom - keyYMargin)
@@ -214,7 +225,7 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             mPaint.setTypeface(Typeface.DEFAULT)
             if(skbStyleMode == SkbStyleMode.Samsung)mPaint.alpha = 128
             mPaint.textSize = mNormalKeyTextSizeSmall.toFloat()
-            val x = when(prefs.skbStyleMode.getValue()){
+            val x = when(skbStyleMode){
                 SkbStyleMode.Yuyan -> softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabelSmall)) / 2.0f
                 SkbStyleMode.Samsung -> softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
                 SkbStyleMode.Google -> softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
