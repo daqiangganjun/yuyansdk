@@ -334,13 +334,14 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_APOSTROPHE, KeyEvent.KEYCODE_SPACE,
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_BACK -> return true
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DEL -> return true
         }
         return false
     }
 
     fun processKeyUp(event: KeyEvent): Boolean {
-        if(event.isSystem) return processSystemKeys(event)
+        // 系统按键（返回键等）一律交由 InputMethodService 基类处理，以保持 DOWN/UP 消费状态一致
+        if(event.isSystem) return false
         else if(isFunctionKey(event.keyCode)){
             processFunctionKey(event)
             return true
@@ -374,14 +375,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             else -> result = false
         }
         return result
-    }
-
-    // 系统按键只处理返回键，当点击返回键且软键盘显示时，隐藏键盘并消费事件
-    private fun processSystemKeys(event: KeyEvent): Boolean {
-        return when (event.keyCode) {
-            KeyEvent.KEYCODE_BACK -> if (service.isInputViewShown) { requestHideSelf(); true } else false
-            else -> false
-        }
     }
 
     fun isFunctionKey(keyCode: Int): Boolean {
