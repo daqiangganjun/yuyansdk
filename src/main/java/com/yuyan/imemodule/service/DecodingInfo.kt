@@ -10,6 +10,9 @@ import com.yuyan.inputmethod.core.Kernel
  */
 object DecodingInfo {
 
+    // 翻页累积的候选词上限，超出部分对用户已无意义，只会长期占用内存
+    private const val MAX_CACHED_CANDIDATES = 2000
+
     var activeCandidate = 0  //当前显示候选词位置
     var activeCandidateBar = 0  //当前显示候选词位置
     // 候选词列表
@@ -86,7 +89,16 @@ object DecodingInfo {
         get() {
             val cands = Kernel.nextPageCandidates
             if (cands.isNotEmpty()) {
-                candidatesLiveData.postValue(candidatesLiveData.value?.plus(cands))
+                // plus 每翻一页都复制整个列表再追加，翻到底会累积成 O(n²) 的分配；
+                // 且累积量无上限，就地追加并限制总量
+                val current = candidatesLiveData.value
+                val merged = ArrayList<CandidateListItem>((current?.size ?: 0) + cands.size)
+                if (current != null) merged.addAll(current)
+                merged.addAll(cands)
+                candidatesLiveData.postValue(
+                    if (merged.size > MAX_CACHED_CANDIDATES) merged.subList(0, MAX_CACHED_CANDIDATES).toList()
+                    else merged
+                )
                 return cands.size
             }
             return 0

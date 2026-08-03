@@ -3,8 +3,6 @@ package com.yuyan.imemodule.utils
 import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.io.OutputStream
 
 object AssetUtils {
     @JvmStatic
@@ -32,24 +30,20 @@ object AssetUtils {
         }
     }
 
+    // 词库总量超过 120MB，1KB 缓冲意味着十余万次读写系统调用
+    private const val BUFFER_SIZE = 64 * 1024
+
     private fun copyFile(context: Context, parentAssetPath: String, filename: String, destParent: String, overwrite: Boolean) {
-        val assetManager = context.assets
-        val inputStream: InputStream?
-        val out: OutputStream?
         try {
-            val assetPath = File(parentAssetPath, filename).path
-            inputStream = assetManager.open(assetPath)
             val newFile = File(destParent, filename)
             if (newFile.exists() && !overwrite) return
-            out = FileOutputStream(newFile)
-            val buffer = ByteArray(1024)
-            var read: Int
-            while (inputStream.read(buffer).also { read = it } != -1) {
-                out.write(buffer, 0, read)
+            val assetPath = File(parentAssetPath, filename).path
+            // use 保证异常路径下同样关闭流，原实现在异常时会泄漏文件描述符
+            context.assets.open(assetPath).use { input ->
+                FileOutputStream(newFile).buffered(BUFFER_SIZE).use { output ->
+                    input.copyTo(output, BUFFER_SIZE)
+                }
             }
-            inputStream.close()
-            out.flush()
-            out.close()
         } catch (e: Exception) {
             e.printStackTrace()
         }

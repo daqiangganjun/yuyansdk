@@ -25,11 +25,15 @@ import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.KeyboardLoaderUtil
+import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.utils.isDarkMode
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import splitties.bitflags.hasFlag
@@ -87,19 +91,43 @@ class ImeService : InputMethodService() {
         super.onStartInputView(editorInfo, restarting)
     }
 
+    /**
+     * 一次输入会话结束。输入法进程常驻，此处不释放的数据会一直保留到下次输入，
+     * 其中残留的编辑框内容还会跨应用留存。
+     */
+    override fun onFinishInput() {
+        DecodingInfo.reset()
+        YuyanEmojiCompat.setEditorInfo(null)
+        mInputView?.clearTextBeforeCursors()
+        super.onFinishInput()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         removeOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.unregisterOnChangeListener(clipboardUpdateContentListener)
+        serviceScope.cancel()
+        // 单例持有整棵输入视图树与本 Service，不解除引用则进程常驻期间无法回收
+        KeyboardManager.instance.release()
+        PopupComponent.get().release()
+        KeyboardLoaderUtil.instance.clearKeyboardMap()
+        mInputView = null
+        mCandidateView = null
     }
 
     /**
      * 横竖屏切换
      */
+    // 绑定到 Service 的作用域，避免每次配置变更都新建一个无人取消的 scope
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var reloadKeyboardJob: Job? = null
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         handleHardwareKeyboard(newConfig)
-        CoroutineScope(Dispatchers.Main).launch {
+        // 连续旋转时只保留最后一次重建，否则会叠加多次全量重建
+        reloadKeyboardJob?.cancel()
+        reloadKeyboardJob = serviceScope.launch {
             delay(200) //延时，解决获取屏幕尺寸不准确。
             EnvironmentSingleton.instance.initData(baseContext)
             if (isSoftKeyboard) {

@@ -4,6 +4,7 @@ package com.yuyan.imemodule.view.popup
 import android.graphics.Rect
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import com.yuyan.imemodule.application.Launcher
 import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.entity.keyboard.SoftKey
@@ -26,12 +27,27 @@ class PopupComponent private constructor(){
         ThemeManager.prefs.keyRadius.getValue().toFloat()
     }
 
-    val root by lazy {
+    private val rootDelegate = lazy {
         Launcher.instance.context.frameLayout {
             layoutDirection = View.LAYOUT_DIRECTION_LTR
             isClickable = false
             isFocusable = false
         }
+    }
+
+    val root by rootDelegate
+
+    /**
+     * 解除对宿主视图的引用。root 被挂到 InputView 之后即通过 parent 反向持有它，
+     * 而本类是进程级单例，Service 销毁后这条链会让整棵输入视图树无法回收。
+     */
+    fun release() {
+        if (!rootDelegate.isInitialized()) return
+        dismissPopup()
+        showingContainerUi = null
+        freeEntryUi.clear()
+        (root.parent as? ViewGroup)?.removeView(root)
+        root.removeAllViews()
     }
 
     companion object{

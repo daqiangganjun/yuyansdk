@@ -77,9 +77,7 @@ sealed class Theme : Parcelable {
             val cropRect: @Serializable(RectSerializer::class) Rect?,
         ) : Parcelable {
             fun toDrawable(): Drawable? {
-                val cropped = File(croppedFilePath)
-                if (!cropped.exists()) return null
-                val bitmap = BitmapFactory.decodeStream(cropped.inputStream()) ?: return null
+                val bitmap = ThemeBackgroundCache.get(croppedFilePath) ?: return null
                 return BitmapDrawable(Launcher.instance.context.resources, bitmap).apply {
                     colorFilter = DarkenColorFilter(100 - brightness)
                 }

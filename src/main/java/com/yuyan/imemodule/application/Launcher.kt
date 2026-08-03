@@ -27,7 +27,6 @@ class Launcher {
     private fun currentInit() {
         AppPrefs.init(PreferenceManager.getDefaultSharedPreferences(context))
         ThemeManager.init(context.resources.configuration)
-        DataBaseKT.instance.sideSymbolDao().getAllSideSymbolPinyin()  //操作一次查询，提前创建数据库，避免使用时才创建数据库
         ClipboardHelper.init()
     }
 
@@ -46,10 +45,15 @@ class Launcher {
             }
             Kernel.resetIme()  // 解决词库复制慢，导致先调用初始化问题
             YuyanEmojiCompat.init(context)
+            // 建库与迁移放在后台完成，避免阻塞 Application.onCreate 所在的主线程
+            DataBaseKT.instance.sideSymbolDao().getAllSideSymbolPinyin()
             //初始化键盘主题
             val isFollowSystemDayNight = prefs.followSystemDayNightTheme.getValue()
             if (isFollowSystemDayNight) {
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+                // AppCompatDelegate 要求在主线程调用
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+                }
             }
         }
     }

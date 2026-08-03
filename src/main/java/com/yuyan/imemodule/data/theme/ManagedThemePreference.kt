@@ -17,9 +17,10 @@ class ManagedThemePreference(
         sharedPreferences.edit { putString(key, value.name) }
     }
 
+    // 用 getTheme 按名查找，避免 getAllThemes 每次拼出一个新列表再线性扫描
     override fun getValue(): Theme =
         sharedPreferences.getString(key, null)?.let { name ->
-            ThemeManager.getAllThemes().find { it.name == name }
+            ThemeManager.getTheme(name)
         } ?: defaultValue
 
     override fun putValueTo(editor: SharedPreferences.Editor) {

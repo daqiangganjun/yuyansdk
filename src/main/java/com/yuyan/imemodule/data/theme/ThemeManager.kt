@@ -79,6 +79,8 @@ object ThemeManager {
     val prefs = AppPrefs.getInstance().registerProvider(::ThemePrefs)
 
     fun saveTheme(theme: Theme.Custom) {
+        // 同名主题可能换了背景图，缓存中的旧图必须失效
+        theme.backgroundImage?.croppedFilePath?.let { ThemeBackgroundCache.invalidate(it) }
         ThemeFilesManager.saveThemeFiles(theme)
         customThemes.indexOfFirst { it.name == theme.name }.also {
             if (it >= 0) customThemes[it] = theme else customThemes.add(0, theme)
@@ -90,6 +92,7 @@ object ThemeManager {
 
     fun deleteTheme(name: String) {
         customThemes.find { it.name == name }?.also {
+            it.backgroundImage?.croppedFilePath?.let { path -> ThemeBackgroundCache.invalidate(path) }
             ThemeFilesManager.deleteThemeFiles(it)
             customThemes.remove(it)
         }

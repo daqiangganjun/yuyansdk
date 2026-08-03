@@ -2,6 +2,7 @@ package com.yuyan.imemodule.keyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
@@ -28,7 +29,7 @@ import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.callback.CandidateViewListener
 import com.yuyan.imemodule.callback.IResponseKeyEvent
-import com.yuyan.imemodule.data.emojicon.EmojiconData.SymbolPreset
+import com.yuyan.imemodule.data.emojicon.SymbolPairs.SymbolPreset
 import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.database.DataBaseKT
 import com.yuyan.imemodule.database.entry.Phrase
@@ -49,7 +50,6 @@ import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.DevicesUtils
 import com.yuyan.imemodule.utils.InputMethodUtil
 import com.yuyan.imemodule.utils.KeyboardLoaderUtil
-import com.yuyan.imemodule.utils.LogUtil
 import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.view.CandidatesBar
 import com.yuyan.imemodule.view.EditPhrasesView
@@ -92,7 +92,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private val textBeforeCursors = StringQueue(50)
 
     init {
-        LogUtil.d("1111111111111", "InputView init")
         initNavbarBackground(service)
         InputModeSwitcher.reset()
         mSkbRoot = LayoutInflater.from(context).inflate(R.layout.sdk_skb_container, this, false) as RelativeLayout
@@ -120,7 +119,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     @SuppressLint("ClickableViewAccessibility")
     fun initView(context: Context) {
-        LogUtil.d("1111111111111", "InputView initView")
         if (isAddPhrases) {
             if (mAddPhrasesLayout.parent == null) {
                 addView(mAddPhrasesLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
@@ -238,18 +236,18 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun updateTheme() {
-        LogUtil.d("1111111111111", "InputView updateTheme")
-        setBackgroundResource(android.R.color.transparent)
+        // 本身不绘制内容，设为 null 比铺一层透明色少一次无效绘制
+        background = null
         val activeTheme = ThemeManager.activeTheme
         val keyTextColor = activeTheme.keyTextColor
         val env = EnvironmentSingleton.instance
 
         val background = activeTheme.backgroundDrawable(ThemeManager.prefs.keyBorder.getValue())
         if (background is BitmapDrawable) {
-            val scaledBitmap = background.bitmap.scale(env.skbWidth, env.inputAreaHeight)
-            mSkbRoot.background = scaledBitmap.toDrawable(context.resources).apply {
-                colorFilter = background.colorFilter
-            }
+            mSkbRoot.background = scaledBackground(background.bitmap, env.skbWidth, env.inputAreaHeight)
+                .toDrawable(context.resources).apply {
+                    colorFilter = background.colorFilter
+                }
         } else {
             mSkbRoot.background = background
         }
@@ -594,7 +592,37 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         DecodingInfo.cacheCandidates(list, true)
     }
 
+    private var scaledBgSource: Bitmap? = null
+    private var scaledBgWidth = 0
+    private var scaledBgHeight = 0
+    private var scaledBgResult: Bitmap? = null
+
+    /**
+     * 按键盘尺寸缩放背景图并缓存结果。
+     * 主题变更、日夜切换、拖动键盘高度都会走到这里，每次重新缩放一张全屏图
+     * 会反复产生 MB 级大对象。源图由 ThemeBackgroundCache 持有，此处不得回收。
+     */
+    private fun scaledBackground(source: Bitmap, width: Int, height: Int): Bitmap {
+        val cached = scaledBgResult
+        if (cached != null && !cached.isRecycled &&
+            scaledBgSource === source && scaledBgWidth == width && scaledBgHeight == height) {
+            return cached
+        }
+        return source.scale(width, height).also {
+            scaledBgSource = source
+            scaledBgWidth = width
+            scaledBgHeight = height
+            scaledBgResult = it
+        }
+    }
+
     fun requestHideSelf() = service.requestHideSelf(0)
+
+    /**
+     * 清空已删除内容的撤回队列。该队列每条最长 1000 字符，
+     * 跨会话保留会把上一个应用的输入内容带到下一个应用。
+     */
+    fun clearTextBeforeCursors() = textBeforeCursors.clear()
 
     private fun sendKeyEvent(keyCode: Int) {
         if (isAddPhrases) {
