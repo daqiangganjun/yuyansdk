@@ -37,6 +37,9 @@ android {
         buildConfigField "String", "versionName", "\"${rootProject.ext.appVersionName}\""
         buildConfigField "String", "AppCommitHead", "\"${getAppGitHead()}\""
         buildConfigField "String", "AppBuildTime", "\"${getAppBuildTime()}\""
+
+        // 混淆规则随 aar 传递给使用方，避免 app 与本模块重复维护同一份规则
+        consumerProguardFiles 'proguard.cfg'
     }
 
     //多渠道打包: app中多渠道配置要一致
@@ -55,8 +58,8 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard.cfg'
+            // 本模块以 project 依赖方式被 app 引用，此处混淆只会造成双重处理，
+            // 规则改由上方 consumerProguardFiles 传递给 app 的 R8
             resValue("string", "app_name", "@string/ime_yuyan_name")
             resValue("drawable", "app_icon", "@drawable/ic_sdk_launcher")
         }
