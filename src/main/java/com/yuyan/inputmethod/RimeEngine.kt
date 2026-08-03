@@ -180,14 +180,16 @@ object RimeEngine {
             showCandidates = emptyList()
             return preCommitText
         }
-        val candidates = Rime.getRimeContext()?.candidates?.asList() ?: emptyList()
+        // processKey 已通过 updateContext() 缓存上下文，此处复用避免重复跨 JNI 编组
+        val candidates = Rime.candidates.asList()
         customPhraseSize = 0
         val compositionText = Rime.compositionText
         showCandidates = when {
             compositionText.isNotBlank() -> {
                 val phrase = CustomEngine.processPhrase(compositionText.replace("\'", ""))
+                // 有编码但候选为空是可能的，不能直接取首项
                 if(InputModeSwitcher.isEnglish && StringUtils.isLetter(compositionText) &&
-                    !compositionText.equals(candidates.first().text, ignoreCase = true) ){
+                    !compositionText.equals(candidates.firstOrNull()?.text, ignoreCase = true) ){
                     phrase.add(0, compositionText)
                 }
                 customPhraseSize = phrase.size
@@ -195,13 +197,15 @@ object RimeEngine {
             }
             else -> candidates
         }
-        var count = Rime.compositionText.count { it in 'A'..'Z' }
+        var count = compositionText.count { it in 'A'..'Z' }
         if (count > 0) {
             keyRecordStack.forEachReversed { inputKey ->
                 if (inputKey is InputKey.T9Key) inputKey.consumed = count-- <= 0
             }
         }
-        var composition = getCurrentComposition(candidates)
+        // 方案在一次输入会话内不变，取一次供下方复用，省去重复的 JNI 调用
+        val rimeSchema = Rime.getCurrentRimeSchema()
+        var composition = getCurrentComposition(candidates, rimeSchema)
         when (charCase) {
             KeyEvent.META_SHIFT_ON -> {
                 for (item in showCandidates) item.text = item.text.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
@@ -216,7 +220,6 @@ object RimeEngine {
                 composition = composition.lowercase()
             }
         }
-        val rimeSchema = Rime.getCurrentRimeSchema()
         pinyins = when (rimeSchema) {
             CustomConstant.SCHEMA_ZH_T9 -> {
                 T9PinYinUtils.t9KeyToPinyin(compositionText.split('\'').firstOrNull { part -> part.isNotEmpty() && part.all { it.isUpperCase() } } ?: "")
@@ -240,9 +243,8 @@ object RimeEngine {
         return pinyins
     }
 
-    private fun getCurrentComposition(candidates: List<CandidateListItem>): String {
+    private fun getCurrentComposition(candidates: List<CandidateListItem>, rimeSchema: String): String {
         val composition = Rime.compositionText
-        val rimeSchema = Rime.getCurrentRimeSchema()
         if(rimeSchema == CustomConstant.SCHEMA_EN) return ""
         if(composition.isEmpty()) return ""
         if(candidates.isEmpty()) return composition

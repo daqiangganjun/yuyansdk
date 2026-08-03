@@ -81,16 +81,14 @@ class KeyRecordStack {
                 record.toString() == keys[j].toString() && record is InputKey.T9Key && !record.consumed
             }
         }
+        // 未匹配到对应按键序列时 index 为 -1，继续执行会在 removeAt 处越界
+        if (index < 0) return null
         repeat(keys.size) {
             keyRecords.removeAt(index)
         }
-        var posInInput = 0
-        keyRecords.forEach {
-            if(it is InputKey.SelectPinyinAction) posInInput += 1
-        }
         keyRecords.add(InputKey.SelectPinyinAction)
         keyRecords.add(index, InputKey.PinyinKey(pinyin))
-        posInInput = keyRecords.subList(0, index).fold(0) { acc, inputKey ->
+        val posInInput = keyRecords.subList(0, index).fold(0) { acc, inputKey ->
             acc + when (inputKey) {
                 is InputKey.T9Key, is InputKey.Apostrophe -> 1
                 is InputKey.PinyinKey -> inputKey.inputKeyLength

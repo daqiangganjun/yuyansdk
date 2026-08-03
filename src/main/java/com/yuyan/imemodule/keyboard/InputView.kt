@@ -620,9 +620,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (!isAddPhrases) service.setComposingText(text)
     }
 
+    // 花漾字转换统一在 ImeService.commitText 中进行，此处不可重复转换
     private fun commitText(text: String) {
         if (isAddPhrases) mAddPhrasesLayout.commitText(text)
-        else service.commitText(StringUtils.converted2FlowerTypeface(text))
+        else service.commitText(text)
     }
 
     private fun commitPairSymbol(text: String) {
@@ -649,7 +650,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (isAddPhrases) {
             mAddPhrasesLayout.commitText(resultText)
         } else {
-            service.commitText(StringUtils.converted2FlowerTypeface(resultText))
+            service.commitText(resultText)
             if (InputModeSwitcher.isEnglish){
                 service.finishComposingText()
                 if(appPrefs.input.abcSpaceAuto.getValue()) service.commitText(" ")

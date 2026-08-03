@@ -232,9 +232,10 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
         }
     }
 
+    // 花漾字转换统一在 ImeService.commitText 中进行，此处不可重复转换
     private fun commitDecInfoText(resultText: String?) {
         resultText ?: return
-        service.commitText(StringUtils.converted2FlowerTypeface(resultText))
+        service.commitText(resultText)
         if (InputModeSwitcher.isEnglish){
             service.finishComposingText()
             if(appPrefs.input.abcSpaceAuto.getValue()) service.commitText(" ")
