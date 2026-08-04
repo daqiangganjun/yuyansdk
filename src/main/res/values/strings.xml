@@ -43,6 +43,15 @@
     <!--布局部分文件提取文本-->
     <string name="paint_thickness">笔画粗细</string>
     <string name="discern_sensitive">识别灵敏度</string>
+    <string name="hw_model_title">手写识别模型</string>
+    <string name="hw_model_state_unknown">正在查询状态…</string>
+    <string name="hw_model_state_not_downloaded">未下载，点击下载（约 20MB，需联网）</string>
+    <string name="hw_model_state_downloading">正在下载…</string>
+    <string name="hw_model_state_downloaded">已下载，识别在本机离线完成。点击可删除</string>
+    <string name="hw_model_state_failed">下载失败：%1$s</string>
+    <string name="hw_model_delete_title">删除手写模型</string>
+    <string name="hw_model_delete_message">删除后需重新下载才能使用手写输入，确定删除？</string>
+    <string name="hw_model_unavailable_tip">手写模型尚未下载，请到设置的手写页面下载</string>
     <string name="keyboard_theme_night">深色模式</string>
     <!--设置输入法高度-->
     <string name="setting_ime_keyboard_height_reset">重置</string>

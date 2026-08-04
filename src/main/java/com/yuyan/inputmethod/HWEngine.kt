@@ -13,6 +13,16 @@ import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinVCharType
 import com.yuyan.inputmethod.core.CandidateListItem
 import com.yuyan.inputmethod.core.HandWriting
 
+/**
+ * 【当前未启用】搜狗手写引擎。
+ *
+ * 其 license 由 libhandwriting.so 内硬编码的四个包名（com.yuyan.pinyin.{offline,online}.{debug,release}）
+ * 约束，本分支为与原版共存已将 applicationId 改为 com.yuyan.selfopt，授权校验必然失败，
+ * initWithDirectory 返回 false，识别得不到任何结果。手写改由 MlKitHandwritingEngine 承担。
+ *
+ * 保留此文件是为了在将来改回原包名时可直接恢复，届时把 HandwritingKeyboard.recognitionData()
+ * 切回本引擎即可。
+ */
 object HWEngine {
     private var mHanyuPinyinOutputFormat: HanyuPinyinOutputFormat
 

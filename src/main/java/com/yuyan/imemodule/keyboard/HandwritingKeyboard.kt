@@ -15,7 +15,11 @@ import com.yuyan.imemodule.entity.handwriting.TimedPoint
 import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
-import com.yuyan.inputmethod.HWEngine
+import android.widget.Toast
+import com.google.mlkit.vision.digitalink.Ink
+import com.yuyan.imemodule.R
+import com.yuyan.inputmethod.MlKitHandwritingEngine
+import com.yuyan.inputmethod.MlKitHandwritingModel
 import java.util.LinkedList
 import kotlin.math.ceil
 import kotlin.math.max
@@ -28,6 +32,9 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private val mControlTimedPointsCached = ControlTimedPoints()
     private var mLastUpTime: Long = 0 //记录上次手写抬手时间，与本次按下时间对比。
     private val mSBPoint: MutableList<Short?> = LinkedList()
+    // ML Kit 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集
+    private var mInkBuilder = Ink.builder()
+    private var mStrokeBuilder: Ink.Stroke.Builder? = null
     private var mPoints: MutableList<TimedPoint> =  ArrayList<TimedPoint>()
     private var mLastVelocity = 0f
     private var mLastWidth = 0f
@@ -88,11 +95,15 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                 if (mLastUpTime != 0L && System.currentTimeMillis() - mLastUpTime > times) {
                     mService!!.responseKeyEvent(SoftKey(InputModeSwitcher.USER_KEYCODE_SELECTED))
                     mSBPoint.clear()
+                    resetInk()
                     clear()
                 }
+                mStrokeBuilder = Ink.Stroke.builder()
+                addInkPoint(eventX, eventY)
             }
             MotionEvent.ACTION_MOVE -> {
                 addPoint(getNewPoint(eventX, eventY))
+                addInkPoint(eventX, eventY)
                 updatePathDelayed()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -101,6 +112,9 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                 mLastUpTime = System.currentTimeMillis()
                 mSBPoint.add(-1)
                 mSBPoint.add(0)
+                addInkPoint(eventX, eventY)
+                mStrokeBuilder?.let { mInkBuilder.addStroke(it.build()) }
+                mStrokeBuilder = null
                 recognitionData()
                 updatePathDelayed()
             }
@@ -232,9 +246,34 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     }
 
     private fun recognitionData() {
-        HWEngine.recognitionData(mSBPoint) {
-                item -> mService?.postDelayed({ mService!!.responseHandwritingResultEvent(item) }, 20)
+        if (!MlKitHandwritingModel.isReady) {
+            // 模型未下载时给出明确提示，而非静默无响应
+            notifyModelUnavailable()
+            return
         }
+        MlKitHandwritingEngine.recognize(mInkBuilder.build()) { item ->
+            mService?.postDelayed({ mService!!.responseHandwritingResultEvent(item) }, 20)
+        }
+    }
+
+    private var modelTipShown = false
+
+    /** 同一次输入会话内只提示一次，避免每落一笔都弹 */
+    private fun notifyModelUnavailable() {
+        MlKitHandwritingModel.refreshState()
+        if (modelTipShown) return
+        modelTipShown = true
+        Toast.makeText(context, R.string.hw_model_unavailable_tip, Toast.LENGTH_LONG).show()
+    }
+
+    private fun addInkPoint(x: Float, y: Float) {
+        mStrokeBuilder?.addPoint(Ink.Point.create(x, y, System.currentTimeMillis()))
+    }
+
+    /** 一个字书写完毕后重置笔迹，避免下一个字带上上一个字的笔划 */
+    private fun resetInk() {
+        mInkBuilder = Ink.builder()
+        mStrokeBuilder = null
     }
 
     fun updatePathDelayed() {
