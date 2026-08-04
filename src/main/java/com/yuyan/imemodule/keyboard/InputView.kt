@@ -104,7 +104,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         TextView(context).apply {
             visibility = GONE
             includeFontPadding = false
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            maxLines = 1
+            setPadding(dp(8), dp(2), dp(8), dp(2))
         }
     }
 
@@ -133,7 +134,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         addView(composingBubble, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             addRule(ABOVE, mSkbRoot.id)
             addRule(ALIGN_START, mSkbRoot.id)
-            marginStart = dp(8)
         })
         DecodingInfo.candidatesLiveData.observe(this) {
             updateCandidateBar()
@@ -600,6 +600,19 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             resetToIdleState()
         }
         if (InputModeSwitcher.isEnglish) setComposingText(DecodingInfo.composingStrForCommit)
+    }
+
+    /**
+     * 手写停笔后自动上屏首选。
+     *
+     * 不走 chooseAndUpdate：其手写分支在选词后会 reset() 清空候选，而此处需要
+     * 保留候选列表，让用户上屏后仍能看到识别出的其它字。
+     */
+    fun commitHandwritingFirstCandidate() {
+        if (DecodingInfo.isCandidatesEmpty) return
+        val first = DecodingInfo.getCandidate(0)?.text ?: return
+        if (first.isEmpty()) return
+        commitText(first)
     }
 
     fun updateCandidateBar() {

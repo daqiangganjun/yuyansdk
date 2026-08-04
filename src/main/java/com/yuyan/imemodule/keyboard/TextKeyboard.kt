@@ -242,15 +242,15 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
         } else if (!TextUtils.isEmpty(keyLabel)) { //Label位于中间
             mPaint.color = textColor
             if(keyboardFontBold) mPaint.typeface = Typeface.DEFAULT_BOLD
-            // 多字符标签属功能键（符号、123、分词、去往等），按比例缩小，
-            // 否则在放大字号后会明显盖过字母键
-            mPaint.textSize = if (keyLabel.length > 1) mNormalKeyTextSize * FUNCTION_KEY_TEXT_SCALE
+            // 功能键（符号、123、中英、去往等）按比例缩小，避免放大字号后盖过字母键。
+            // 判定依据是按键码而非标签长度——九键的 ABC/DEF 同为多字符，却应与字母键等大。
+            mPaint.textSize = if (isFunctionKey(softKey.code)) mNormalKeyTextSize * FUNCTION_KEY_TEXT_SCALE
                 else mNormalKeyTextSize.toFloat()
             val x = softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabel)) / 2.0f
-            // 按当前字号的度量做垂直居中；有附带符号时整体下移，为上方的符号让位
+            // 按当前字号的度量做垂直居中。附带符号位于按键上部且字号很小，
+            // 主标签保持居中即可，无须为其让位
             val fm = mPaint.fontMetrics
-            val centerY = (softKey.mTop + softKey.mBottom) / 2.0f - (fm.ascent + fm.descent) / 2.0f
-            val y = if (hasSmallLabel) centerY + weightHeigth * 0.5f else centerY
+            val y = (softKey.mTop + softKey.mBottom) / 2.0f - (fm.ascent + fm.descent) / 2.0f
             canvas.drawText(keyLabel, x, y, mPaint)
         }
         if (keyboardMnemonic && !TextUtils.isEmpty(keyMnemonic)) {  //助记符位于中下方
@@ -282,6 +282,8 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             KeyEvent.KEYCODE_SPACE,
             KeyEvent.KEYCODE_DEL,
             KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_CLEAR,          // 九键「重输」
+            KeyEvent.KEYCODE_APOSTROPHE,     // 「分词」
             InputModeSwitcher.USER_KEYCODE_SYMBOL,
             InputModeSwitcher.USER_KEYCODE_NUMBER,
             InputModeSwitcher.USER_KEYCODE_LANG,

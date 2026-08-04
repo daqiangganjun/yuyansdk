@@ -31,6 +31,7 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private val mPointsCache: MutableList<TimedPoint> = ArrayList<TimedPoint>()
     private val mControlTimedPointsCached = ControlTimedPoints()
     private var mLastUpTime: Long = 0 //记录上次手写抬手时间，与本次按下时间对比。
+    private var autoCommitted = false // 本字是否已由停笔定时自动上屏，避免落笔时重复提交
     private val mSBPoint: MutableList<Short?> = LinkedList()
     // ML Kit 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集
     private var mInkBuilder = Ink.builder()
@@ -93,7 +94,9 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                 mPoints.clear()
                 addPoint(getNewPoint(eventX, eventY))
                 if (mLastUpTime != 0L && System.currentTimeMillis() - mLastUpTime > times) {
-                    mService!!.responseKeyEvent(SoftKey(InputModeSwitcher.USER_KEYCODE_SELECTED))
+                    // 停笔定时若已自动上屏，此处不再重复提交
+                    if (!autoCommitted) mService!!.responseKeyEvent(SoftKey(InputModeSwitcher.USER_KEYCODE_SELECTED))
+                    autoCommitted = false
                     mSBPoint.clear()
                     resetInk()
                     clear()
@@ -283,6 +286,14 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
 
     // 清空笔迹
     var runnable = Runnable {
+        autoCommitHandwriting()
         clear()
+    }
+
+    /** 停笔超过设定时长即自动上屏首选，候选列表保留 */
+    private fun autoCommitHandwriting() {
+        if (autoCommitted || mSBPoint.isEmpty()) return
+        mService?.commitHandwritingFirstCandidate()
+        autoCommitted = true
     }
 }
