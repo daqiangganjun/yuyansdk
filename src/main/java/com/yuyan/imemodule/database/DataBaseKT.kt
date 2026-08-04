@@ -23,7 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
-@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 5, exportSchema = false)
+@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 6, exportSchema = false)
 abstract class DataBaseKT : RoomDatabase() {
     abstract fun sideSymbolDao(): SideSymbolDao
     abstract fun clipboardDao(): ClipboardDao
@@ -54,6 +54,13 @@ abstract class DataBaseKT : RoomDatabase() {
             }
         }
 
+        // 数字行功能已移除，清理历史库中残留的菜单记录，否则解码时会遇到未知枚举名
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DELETE FROM skbfun WHERE name = 'NumberRow'")
+            }
+        }
+
         // 索引名必须与 @Index 生成的名称一致，否则 Room 的 schema 校验不通过
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -72,6 +79,7 @@ abstract class DataBaseKT : RoomDatabase() {
             .addMigrations(MIGRATION_2_3)
             .addMigrations(MIGRATION_3_4)
             .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_5_6)
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
@@ -130,7 +138,6 @@ abstract class DataBaseKT : RoomDatabase() {
                     SkbFun(name = SkbMenuMode.DarkTheme.name, isKeep = 0, position = 5),
                     SkbFun(name = SkbMenuMode.Feedback.name, isKeep = 0, position = 6),
                     SkbFun(name = SkbMenuMode.OneHanded.name, isKeep = 0, position = 7),
-                    SkbFun(name = SkbMenuMode.NumberRow.name, isKeep = 0, position = 8),
                     SkbFun(name = SkbMenuMode.JianFan.name, isKeep = 0, position = 9),
                     SkbFun(name = SkbMenuMode.Mnemonic.name, isKeep = 0, position = 10),
                     SkbFun(name = SkbMenuMode.FloatKeyboard.name, isKeep = 0, position = 11),

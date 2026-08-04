@@ -52,7 +52,6 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
     private lateinit var mMenuRightArrowBtn: ImageView
     private lateinit var mCandidatesDataContainer: LinearLayout //候选词视图
     private lateinit var mCandidatesMenuContainer: LinearLayout //控制菜单视图
-    private lateinit var mComposingView: TextView // 组成字符串的View，用于显示输入的拼音。
     private lateinit var mRVCandidates: RecyclerView    //候选词列表
     private lateinit var mIvMenuSetting: ImageView
     private lateinit var mLlContainer: LinearLayout
@@ -78,10 +77,6 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             mCandidatesDataContainer = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 visibility = GONE
-            }
-            mComposingView = TextView(context).apply {
-                includeFontPadding = false
-                setPadding(dp(10), 0, dp(10), 0)
             }
             candidatesData = LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -115,17 +110,17 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
                     }
                 }
             })
-            mCandidatesDataContainer.addView(mComposingView)
             mCandidatesDataContainer.addView(candidatesData)
             this.addView(mCandidatesDataContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         } else {
             (mRightArrowBtn.parent as ViewGroup).removeView(mRightArrowBtn)
             (mRVCandidates.parent as ViewGroup).removeView(mRVCandidates)
         }
+        // 拼音串已移至键盘上方的浮动气泡，候选词容器独占整条候选栏，
+        // 其内元素仍用候选词行高并由容器的 CENTER_VERTICAL 居中
         var candidatesHeight = instance.heightForCandidates
-        mComposingView.layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, instance.heightForcomposing)
         mRightArrowBtn.layoutParams = LinearLayout.LayoutParams(candidatesHeight, candidatesHeight, 0f).apply { marginEnd = dp(10) }
-        candidatesData.layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, candidatesHeight)
+        candidatesData.layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         mRightArrowBtn.setOnClickListener { view: View ->
             when (val level = (view as ImageView).drawable.level) {
                 2 -> mCvListener.onClickClearCandidate()
@@ -144,7 +139,6 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             candidatesData.addView(mRVCandidates, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, candidatesHeight, 1f))
             candidatesData.addView(mRightArrowBtn)
         }
-        mComposingView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, instance.composingTextSize)
         mCandidatesAdapter.notifyChanged()
     }
 
@@ -276,7 +270,6 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
      * 显示候选词
      */
     fun showCandidates() {
-        mComposingView.text = DecodingInfo.composingStrForDisplay
         val container = KeyboardManager.instance.currentContainer
         mIvMenuSetting.drawable.setLevel( if(container is InputBaseContainer) 0 else 1)
         if (container is ClipBoardContainer) {
@@ -293,7 +286,7 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             // 菜单配置极少变动，走进程内缓存，避免每次候选栏刷新都查库
             val barMenus = SkbMenuCache.barMenus()
             for (item in barMenus) {
-                val skbMenuMode = SkbMenuMode.decode(item.name)
+                val skbMenuMode = SkbMenuMode.decodeOrNull(item.name) ?: continue
                 val skbFunItem = menuSkbFunsPreset[skbMenuMode]
                 if (skbFunItem != null) {
                     mFunItems.add(skbFunItem)
@@ -390,7 +383,6 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
         initMenuView()
         initCandidateView()
         mIvMenuSetting.setImageResource(R.drawable.sdk_level_candidates_menu_left)
-        mComposingView.setTextColor(textColor)
         mRightArrowBtn.drawable.setTint(textColor)
         mMenuRightArrowBtn.drawable.setTint(textColor)
         mIvMenuSetting.drawable.setTint(textColor)

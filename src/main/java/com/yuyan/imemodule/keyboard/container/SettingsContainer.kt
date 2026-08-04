@@ -60,7 +60,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
     fun showSettingsView() {
         funItems.clear()
         for(item in DataBaseKT.instance.skbFunDao().getAllMenu()){
-            val skbMenuMode = menuSkbFunsPreset[SkbMenuMode.decode(item.name)]
+            val skbMenuMode = SkbMenuMode.decodeOrNull(item.name)?.let { menuSkbFunsPreset[it] }
             if(skbMenuMode != null)funItems.add(skbMenuMode)
         }
         adapter = MenuAdapter(context, funItems)

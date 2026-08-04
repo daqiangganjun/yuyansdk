@@ -7,7 +7,6 @@ enum class SkbMenuMode {
     KeyboardHeight,
     DarkTheme,
     Feedback,
-    NumberRow,
     JianFan,
     LockEnglish,
     SymbolShow,
@@ -40,5 +39,11 @@ enum class SkbMenuMode {
     companion object : ManagedPreference.StringLikeCodec<SkbMenuMode> {
         override fun decode(raw: String): SkbMenuMode =
             SkbMenuMode.valueOf(raw)
+
+        /**
+         * 供读取历史数据使用：数据库中可能残留已废弃的菜单名（如已移除的数字行），
+         * 用 valueOf 解码会抛异常，此处返回 null 由调用方跳过。
+         */
+        fun decodeOrNull(raw: String): SkbMenuMode? = entries.find { it.name == raw }
     }
 }

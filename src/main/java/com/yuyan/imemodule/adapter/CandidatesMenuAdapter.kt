@@ -86,7 +86,6 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
         val result: Boolean = when (data.skbMenuMode) {
             // Setting Menu
             SkbMenuMode.DarkTheme -> activeTheme.isDark
-            SkbMenuMode.NumberRow -> AppPrefs.getInstance().keyboardSetting.abcNumberLine.getValue()
             SkbMenuMode.JianFan -> AppPrefs.getInstance().input.chineseFanTi.getValue()
             SkbMenuMode.LockEnglish -> AppPrefs.getInstance().keyboardSetting.keyboardLockEnglish.getValue()
             SkbMenuMode.SymbolShow -> ThemeManager.prefs.keyboardSymbol.getValue()

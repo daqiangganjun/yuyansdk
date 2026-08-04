@@ -183,11 +183,8 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             bg.setColor(mActiveTheme.keyPressHighlightColor)
             bg.draw(canvas)
         } else if (isKeyBorder) {
-            val background = when (softKey.code) {
-                KeyEvent.KEYCODE_ENTER -> mActiveTheme.accentKeyBackgroundColor
-                KeyEvent.KEYCODE_SPACE-> mActiveTheme.functionKeyBackgroundColor
-                else  -> mActiveTheme.keyBackgroundColor
-            }
+            val background = if (isFunctionKey(softKey.code)) mActiveTheme.functionKeyBackgroundColor
+                else mActiveTheme.keyBackgroundColor
             bg.setColor(background)
             bg.draw(canvas)
         } else if(softKey.code == KeyEvent.KEYCODE_ENTER) {
@@ -217,13 +214,14 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             keyLabel = "分词"
             keyIcon = null
         }
-        if (keyboardSymbol && !TextUtils.isEmpty(keyLabelSmall)) {
-            // 附带符号统一以右上角灰色角标呈现，避免与主标签争夺视觉重心
+        val hasSmallLabel = keyboardSymbol && !TextUtils.isEmpty(keyLabelSmall)
+        if (hasSmallLabel) {
+            // 附带符号居中显示于按键上部，主标签相应下移（搜狗式排版）
             mPaint.color = textColor
             mPaint.setTypeface(Typeface.DEFAULT)
             mPaint.alpha = SMALL_LABEL_ALPHA
             mPaint.textSize = mNormalKeyTextSizeSmall.toFloat()
-            val x = softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
+            val x = softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabelSmall)) / 2.0f
             val y = softKey.mTop + weightHeigth * 1.1f
             canvas.drawText(keyLabelSmall, x, y, mPaint)
         }
@@ -249,9 +247,10 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             mPaint.textSize = if (keyLabel.length > 1) mNormalKeyTextSize * FUNCTION_KEY_TEXT_SCALE
                 else mNormalKeyTextSize.toFloat()
             val x = softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabel)) / 2.0f
-            // 按当前字号的度量做垂直居中；附带符号已移至右上角，不再占用中部空间
+            // 按当前字号的度量做垂直居中；有附带符号时整体下移，为上方的符号让位
             val fm = mPaint.fontMetrics
-            val y = (softKey.mTop + softKey.mBottom) / 2.0f - (fm.ascent + fm.descent) / 2.0f
+            val centerY = (softKey.mTop + softKey.mBottom) / 2.0f - (fm.ascent + fm.descent) / 2.0f
+            val y = if (hasSmallLabel) centerY + weightHeigth * 0.5f else centerY
             canvas.drawText(keyLabel, x, y, mPaint)
         }
         if (keyboardMnemonic && !TextUtils.isEmpty(keyMnemonic)) {  //助记符位于中下方
@@ -272,8 +271,23 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
     companion object {
         /** 功能键（多字符标签）相对字母键的字号比例 */
         private const val FUNCTION_KEY_TEXT_SCALE = 0.75f
-        /** 按键右上角附带符号的透明度 */
+        /** 按键附带符号的透明度 */
         private const val SMALL_LABEL_ALPHA = 128
+
+        /**
+         * 是否为功能键。功能键使用区别于字母键的底色，与主流输入法一致。
+         */
+        private fun isFunctionKey(code: Int): Boolean = when (code) {
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_SPACE,
+            KeyEvent.KEYCODE_DEL,
+            KeyEvent.KEYCODE_SHIFT_LEFT,
+            InputModeSwitcher.USER_KEYCODE_SYMBOL,
+            InputModeSwitcher.USER_KEYCODE_NUMBER,
+            InputModeSwitcher.USER_KEYCODE_LANG,
+            InputModeSwitcher.USER_KEYCODE_RETURN -> true
+            else -> false
+        }
     }
 
     override fun closing() {

@@ -12,15 +12,7 @@ import com.yuyan.imemodule.view.preference.ManagedPreference
 
 private val skbStyleMode = ThemeManager.prefs.skbStyleMode
 
-private val skbStyleModeListener = ManagedPreference.OnChangeListener<SkbStyleMode> { _, value ->
-   when(value){
-       SkbStyleMode.Samsung ->{
-           AppPrefs.getInstance().keyboardSetting.abcNumberLine.setValue(true)
-       }
-       else ->{
-           AppPrefs.getInstance().keyboardSetting.abcNumberLine.setValue(false)
-       }
-   }
+private val skbStyleModeListener = ManagedPreference.OnChangeListener<SkbStyleMode> { _, _ ->
     EnvironmentSingleton.instance.initData()
     KeyboardLoaderUtil.instance.clearKeyboardMap()
     KeyboardManager.instance.clearKeyboard()

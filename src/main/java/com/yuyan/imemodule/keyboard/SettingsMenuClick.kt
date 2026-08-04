@@ -46,14 +46,6 @@ fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
         SkbMenuMode.Feedback -> {
             AppUtil.launchSettingsToKeyboard(Launcher.instance.context)
         }
-        SkbMenuMode.NumberRow -> {
-            val abcNumberLine = AppPrefs.getInstance().keyboardSetting.abcNumberLine.getValue()
-            AppPrefs.getInstance().keyboardSetting.abcNumberLine.setValue(!abcNumberLine)
-            //更换键盘模式后 重亲加载键盘
-            KeyboardLoaderUtil.instance.changeSKBNumberRow()
-            KeyboardManager.instance.clearKeyboard()
-            KeyboardManager.instance.switchKeyboard()
-        }
         SkbMenuMode.JianFan -> {
             val chineseFanTi = AppPrefs.getInstance().input.chineseFanTi.getValue()
             AppPrefs.getInstance().input.chineseFanTi.setValue(!chineseFanTi)

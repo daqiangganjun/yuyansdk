@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -17,6 +18,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
 import android.widget.ImageButton
+import android.widget.TextView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -62,6 +64,7 @@ import com.yuyan.imemodule.view.widget.LifecycleRelativeLayout
 import com.yuyan.inputmethod.CustomEngine
 import com.yuyan.inputmethod.core.CandidateListItem
 import com.yuyan.inputmethod.core.Kernel
+import splitties.dimensions.dp
 import splitties.views.bottomPadding
 import splitties.views.rightPadding
 import kotlin.math.absoluteValue
@@ -93,6 +96,19 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     // 记录删除内容
     private val textBeforeCursors = StringQueue(50)
 
+    /**
+     * 拼音气泡。原先拼音占据候选栏上半部，候选词被压到下半区且随拼音有无跳动；
+     * 现改为浮在键盘上方、覆盖于宿主应用之上，候选词位置恒定。
+     */
+    private val composingBubble: TextView by lazy {
+        TextView(context).apply {
+            visibility = GONE
+            includeFontPadding = false
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+        }
+    }
+
+
     init {
         initNavbarBackground(service)
         InputModeSwitcher.reset()
@@ -112,6 +128,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 addRule(ALIGN_LEFT, mSkbRoot.id)
             })
         }
+        // 拼音气泡浮于键盘之上。onComputeInsets 的 contentTopInsets 取自 mSkbRoot，
+        // 故此处让 InputView 向上长高不会把宿主应用的内容多顶起一截。
+        addView(composingBubble, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            addRule(ABOVE, mSkbRoot.id)
+            addRule(ALIGN_START, mSkbRoot.id)
+            marginStart = dp(8)
+        })
         DecodingInfo.candidatesLiveData.observe(this) {
             updateCandidateBar()
             (KeyboardManager.instance.currentContainer as? CandidatesContainer)?.showCandidatesView()
@@ -262,6 +285,15 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.background = background
         }
         applyFloatKeyboardOutline(env.keyboardModeFloat)
+        composingBubble.apply {
+            setTextColor(keyTextColor)
+            textSize = EnvironmentSingleton.instance.composingTextSize
+            this.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = DevicesUtils.dip2px(6).toFloat()
+                setColor(activeTheme.keyBackgroundColor)
+            }
+        }
         mSkbCandidatesBarView.updateTheme(keyTextColor)
         if (::mOnehandHoderLayout.isInitialized) {
             (mOnehandHoderLayout[0] as ImageButton).drawable?.setTint(keyTextColor)
@@ -275,6 +307,16 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 悬浮键盘四角裁圆。背景可能是纯色也可能是主题图片，用轮廓裁剪比替换背景更通用，
      * 且不受主题实现影响。
      */
+    private fun updateComposingBubble() {
+        val text = DecodingInfo.composingStrForDisplay
+        if (text.isEmpty()) {
+            if (composingBubble.visibility != GONE) composingBubble.visibility = GONE
+            return
+        }
+        composingBubble.text = text
+        if (composingBubble.visibility != VISIBLE) composingBubble.visibility = VISIBLE
+    }
+
     private val floatCornerRadius: Float by lazy { DevicesUtils.dip2px(16).toFloat() }
 
     private val floatOutlineProvider = object : ViewOutlineProvider() {
@@ -560,7 +602,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (InputModeSwitcher.isEnglish) setComposingText(DecodingInfo.composingStrForCommit)
     }
 
-    fun updateCandidateBar() = mSkbCandidatesBarView.scheduleShowCandidates()
+    fun updateCandidateBar() {
+        updateComposingBubble()
+        mSkbCandidatesBarView.scheduleShowCandidates()
+    }
 
     private fun resetCandidateWindow() {
         DecodingInfo.reset()

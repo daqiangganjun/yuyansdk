@@ -29,7 +29,6 @@ import java.util.LinkedList
 class KeyboardLoaderUtil private constructor() {
     private var rimeValue: String? = null
     private var mSkbValue: Int = 0
-    private var numberLine: Boolean = false
     private var skbStyleMode: SkbStyleMode = SkbStyleMode.Yuyan
     fun clearKeyboardMap() {
         mSoftKeyboardMap.clear()
@@ -50,12 +49,7 @@ class KeyboardLoaderUtil private constructor() {
         shiftToggleStates.add(ToggleState(5))
 
         val softKeyboard: SoftKeyboard?
-        numberLine = AppPrefs.getInstance().keyboardSetting.abcNumberLine.getValue()
         val rows: MutableList<List<SoftKey>> = LinkedList()
-        if (numberLine) {
-            val qwertyKeys = createNumberLineKeys(arrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 0))
-            rows.add(qwertyKeys.asList())
-        }
         when(skbValue){
             InputModeSwitcher.MASK_SKB_LAYOUT_QWERTY_PINYIN -> {  // 1000  拼音全键
                 rimeValue = AppPrefs.getInstance().internal.pinyinModeRime.getValue()
@@ -297,12 +291,7 @@ class KeyboardLoaderUtil private constructor() {
                 rows.add(keyBeans)
             }
         }
-        val numberLineSkb = when(skbStyleMode){
-            SkbStyleMode.Yuyan -> numberLine
-            SkbStyleMode.Samsung -> numberLine
-            SkbStyleMode.Google -> numberLine
-        }
-        softKeyboard = getSoftKeyboard(rows, numberLineSkb)
+        softKeyboard = getSoftKeyboard(rows)
         mSoftKeyboardMap[skbValue] = softKeyboard
         return softKeyboard
     }
@@ -425,12 +414,6 @@ class KeyboardLoaderUtil private constructor() {
         return keyBeans
     }
 
-    fun changeSKBNumberRow() {
-        for (skbValue in mSoftKeyboardMap.keys) {
-            loadBaseSkb(skbValue)
-        }
-    }
-
     fun getSoftKeyboard(skbValue: Int): SoftKeyboard {
         var softKeyboard = mSoftKeyboardMap[skbValue]
         if (softKeyboard == null) {
@@ -440,7 +423,7 @@ class KeyboardLoaderUtil private constructor() {
     }
 
     /** 生成键盘布局，主要用于计算键盘边界 */
-    private fun getSoftKeyboard(rows: List<List<SoftKey>>, isNumberRow: Boolean): SoftKeyboard {
+    private fun getSoftKeyboard(rows: List<List<SoftKey>>): SoftKeyboard {
         var lastKeyBottom = 0f
         var lastKeyRight: Float
         var lastKeyTop: Float
@@ -452,14 +435,10 @@ class KeyboardLoaderUtil private constructor() {
                 var keyYPos = keyBean.mTopF
                 val keyWidth = keyBean.widthF
                 val keyHeight = keyBean.heightF
-                if(keyXPos == -1f || keyYPos == -1f || isNumberRow) {
+                if(keyXPos == -1f || keyYPos == -1f) {
                     if (keyXPos == -1f) keyXPos = lastKeyRight
                     if (keyYPos == -1f) keyYPos = lastKeyTop
-                    if (isNumberRow) {
-                        keyBean.setKeyDimensions(keyXPos, keyYPos/1.2f, keyHeight/1.2f)
-                    } else {
-                        keyBean.setKeyDimensions(keyXPos, keyYPos)
-                    }
+                    keyBean.setKeyDimensions(keyXPos, keyYPos)
                 }
                 keyBean.setSkbCoreSize(EnvironmentSingleton.instance.skbWidth, EnvironmentSingleton.instance.skbHeight)
                 lastKeyRight = keyXPos + keyWidth
@@ -505,7 +484,7 @@ class KeyboardLoaderUtil private constructor() {
             else -> emptyMap()
         }
         val softKeys = mutableListOf<SoftKey>()
-        val keyPreset = if(numberLine)KeyPreset.qwertyPYKeyPreset else KeyPreset.qwertyPYKeyNumberPreset
+        val keyPreset = KeyPreset.qwertyPYKeyNumberPreset
         for(code in codes){
             val labels = keyPreset[code]
             softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = labels?.getOrNull(1) ?: "", keyMnemonic = keyMnemonicPreset[code] ?: "").apply {
@@ -517,7 +496,7 @@ class KeyboardLoaderUtil private constructor() {
 
     private fun createQwertyKeys(codes: Array<Int>): Array<SoftKey> {
         val softKeys = mutableListOf<SoftKey>()
-        val keyPreset = if(numberLine)KeyPreset.qwertyKeyPreset else KeyPreset.qwertyKeyNumberPreset
+        val keyPreset = KeyPreset.qwertyKeyNumberPreset
         for(code in codes){
             val labels = keyPreset[code]
             softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = labels?.getOrNull(1) ?: "", keyMnemonic = labels?.getOrNull(2) ?: "").apply {
@@ -528,28 +507,16 @@ class KeyboardLoaderUtil private constructor() {
     }
 
     private fun createHandwritingKey(code: Int): SoftKey {
-        val keyPreset = if(numberLine)KeyPreset.qwertyPYKeyPreset else KeyPreset.qwertyPYKeyNumberPreset
+        val keyPreset = KeyPreset.qwertyPYKeyNumberPreset
         val labels = keyPreset[code]
         return SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = labels?.getOrNull(1) ?: "").apply {
             widthF = 0.18f
         }
     }
 
-    private fun createNumberLineKeys(codes: Array<Int>): Array<SoftKey> {
-        val softKeys = mutableListOf<SoftKey>()
-        for(code in codes) {
-            val softKey = SoftKey(label = code.toString()).apply {
-                widthF = 0.099f
-                heightF = 0.2f
-            }
-            softKeys.add(softKey)
-        }
-        return softKeys.toTypedArray()
-    }
-
     private fun createLX17Keys(codes: Array<Int>, width: Float = 0.142f): Array<SoftKey> {
         val softKeys = mutableListOf<SoftKey>()
-        val keyPreset = if(numberLine)KeyPreset.lx17PYKeyPreset else KeyPreset.lx17PYKeyNumberPreset
+        val keyPreset = KeyPreset.lx17PYKeyNumberPreset
         for(code in codes){
             val labels = keyPreset[code]
             softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = labels?.getOrNull(1) ?: "", keyMnemonic= lx17MnemonicPreset[code] ?: "").apply {
