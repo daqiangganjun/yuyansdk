@@ -288,10 +288,12 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         composingBubble.apply {
             setTextColor(keyTextColor)
             textSize = EnvironmentSingleton.instance.composingTextSize
+            val radius = DevicesUtils.dip2px(8).toFloat()
             this.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = DevicesUtils.dip2px(6).toFloat()
-                setColor(activeTheme.keyBackgroundColor)
+                // 只做上方两角，下沿与键盘齐平不留圆角
+                cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                setColor(activeTheme.keyboardColor)
             }
         }
         mSkbCandidatesBarView.updateTheme(keyTextColor)
@@ -612,8 +614,15 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (DecodingInfo.isCandidatesEmpty) return
         val first = DecodingInfo.getCandidate(0)?.text ?: return
         if (first.isEmpty()) return
+        // 上屏会触发 onUpdateSelection 进而以已上屏文本查联想词，把手写候选覆盖掉，
+        // 故抑制紧随其后的那一次联想，保住候选列表。
+        // 仅在联想确实会发生时置位，否则标志无人消费会残留到下一次输入
+        suppressAssociateOnce = chinesePrediction && InputModeSwitcher.isChinese
         commitText(first)
     }
+
+    /** 手写自动上屏后抑制一次联想刷新 */
+    private var suppressAssociateOnce = false
 
     fun updateCandidateBar() {
         updateComposingBubble()
@@ -864,6 +873,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 else CustomEngine.parseExpressionAtEnd(textBeforeCursor).let { CustomEngine.expressionCalculator(textBeforeCursor, it).let(::showSymbols) }
             }
             chinesePrediction && InputModeSwitcher.isChinese-> {
+                if (suppressAssociateOnce) {
+                    suppressAssociateOnce = false
+                    return
+                }
                 val textBeforeCursor = service.getTextBeforeCursor(10)
                 if (textBeforeCursor.isBlank()) resetCandidateWindow()
                 else {
