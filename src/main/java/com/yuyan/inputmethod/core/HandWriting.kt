@@ -26,8 +26,9 @@ object HandWriting {
         return activeMode(i)
     }
 
+    // native 在引擎未就绪或无识别结果时会返回 null，此处如实标注为可空
     @Throws(NumberFormatException::class)
-    fun getCandidatesPyComposition(): Array<Array<String?>?> {
+    fun getCandidatesPyComposition(): Array<Array<String?>?>? {
         return getCandidates()
     }
 
@@ -36,7 +37,7 @@ object HandWriting {
 
     external fun activeMode(mode: Int): Boolean
 
-    external fun getCandidates(): Array<Array<String?>?>
+    external fun getCandidates(): Array<Array<String?>?>?
 
     external fun initWithDirectory(context: Context, str: String?): Boolean
 
