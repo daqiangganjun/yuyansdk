@@ -65,6 +65,9 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
 
     fun initialize(cvListener: CandidateViewListener) {
         mCvListener = cvListener
+        // 本视图高度由内容撑开，内容上下并无留白；而键盘区首行按键上方有 keyYMargin
+        // 的空隙，导致顶栏看起来偏上。补一个等值的顶部内边距使上下视觉对称。
+        setPadding(0, instance.keyYMargin, 0, 0)
         initMenuView()
         initCandidateView()
     }

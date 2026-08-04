@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Paint.FontMetricsInt
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -37,7 +36,6 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
     private var mNormalKeyTextSize = 0   //正常按键的文本大小
     private var mNormalKeyTextSizeSmall = 0  //正常按键的文本大小(小值)
     private val mPaint: Paint = Paint()   //绘制按键的画笔
-    private val mFmi: FontMetricsInt
     private var isKeyBorder = false // 启用按键边框
     protected lateinit var mActiveTheme: Theme
     private var keyRadius = 0
@@ -54,7 +52,6 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      */
     init {
         mPaint.isAntiAlias = true
-        mFmi = mPaint.fontMetricsInt
         keyboardFontBold = prefs.keyboardFontBold.getValue()
         keyboardSymbol = prefs.keyboardSymbol.getValue()
         keyboardMnemonic = AppPrefs.getInstance().keyboardSetting.keyboardMnemonic.getValue()
@@ -221,15 +218,12 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             keyIcon = null
         }
         if (keyboardSymbol && !TextUtils.isEmpty(keyLabelSmall)) {
+            // 附带符号统一以右上角灰色角标呈现，避免与主标签争夺视觉重心
             mPaint.color = textColor
             mPaint.setTypeface(Typeface.DEFAULT)
-            if(skbStyleMode == SkbStyleMode.Samsung)mPaint.alpha = 128
+            mPaint.alpha = SMALL_LABEL_ALPHA
             mPaint.textSize = mNormalKeyTextSizeSmall.toFloat()
-            val x = when(skbStyleMode){
-                SkbStyleMode.Yuyan -> softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabelSmall)) / 2.0f
-                SkbStyleMode.Samsung -> softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
-                SkbStyleMode.Google -> softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
-            }
+            val x = softKey.mRight - mPaint.measureText(keyLabelSmall) - keyXMargin * 2
             val y = softKey.mTop + weightHeigth * 1.1f
             canvas.drawText(keyLabelSmall, x, y, mPaint)
         }
@@ -250,11 +244,14 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
         } else if (!TextUtils.isEmpty(keyLabel)) { //Label位于中间
             mPaint.color = textColor
             if(keyboardFontBold) mPaint.typeface = Typeface.DEFAULT_BOLD
-            mPaint.textSize =  mNormalKeyTextSize.toFloat()
+            // 多字符标签属功能键（符号、123、分词、去往等），按比例缩小，
+            // 否则在放大字号后会明显盖过字母键
+            mPaint.textSize = if (keyLabel.length > 1) mNormalKeyTextSize * FUNCTION_KEY_TEXT_SCALE
+                else mNormalKeyTextSize.toFloat()
             val x = softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabel)) / 2.0f
-            val fontHeight = mFmi.bottom - mFmi.top
-            val y = if(keyLabelSmall.isEmpty()) (softKey.mTop + softKey.mBottom) / 2.0f + fontHeight
-            else  (softKey.mTop + softKey.mBottom) / 2.0f + fontHeight *1.5f
+            // 按当前字号的度量做垂直居中；附带符号已移至右上角，不再占用中部空间
+            val fm = mPaint.fontMetrics
+            val y = (softKey.mTop + softKey.mBottom) / 2.0f - (fm.ascent + fm.descent) / 2.0f
             canvas.drawText(keyLabel, x, y, mPaint)
         }
         if (keyboardMnemonic && !TextUtils.isEmpty(keyMnemonic)) {  //助记符位于中下方
@@ -270,6 +267,13 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         closing()
+    }
+
+    companion object {
+        /** 功能键（多字符标签）相对字母键的字号比例 */
+        private const val FUNCTION_KEY_TEXT_SCALE = 0.75f
+        /** 按键右上角附带符号的透明度 */
+        private const val SMALL_LABEL_ALPHA = 128
     }
 
     override fun closing() {

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.view.KeyEvent
@@ -11,6 +12,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
@@ -170,8 +172,12 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 setImageResource(R.drawable.ic_horizontal_line)
                 isClickable = true
                 isEnabled = true
+                scaleType = ImageView.ScaleType.CENTER
             }
-            mLlKeyboardBottomHolder.addView(mIvKeyboardMove)
+            // 拖动条需水平居中并占满整条高度，否则只有左上角一小块可触摸
+            mLlKeyboardBottomHolder.addView(mIvKeyboardMove, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, env.heightForKeyboardMove
+            ))
             mIvKeyboardMove.setOnTouchListener { _, event -> onMoveKeyboardEvent(event) }
         } else {
             val fullDisplayEnable = appPrefs.internal.fullDisplayKeyboardEnable.getValue()
@@ -216,12 +222,16 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 val env = EnvironmentSingleton.instance
 
                 if (dx.absoluteValue > 10) {
-                    rightPaddingValue = (rightPaddingValue - dx.toInt()).coerceIn(0, this.width - mSkbRootWidth)
+                    rightPaddingValue = (rightPaddingValue - dx.toInt()).coerceIn(0, (this.width - mSkbRootWidth).coerceAtLeast(0))
                     initialTouchX = event.rawX
                     if (env.keyboardModeFloat) rightPadding = rightPaddingValue else mSkbRoot.rightPadding = rightPaddingValue
                 }
                 if (dy.absoluteValue > 10) {
-                    bottomPaddingValue = (bottomPaddingValue - dy.toInt()).coerceIn(0, this.height - mSkbRootHeight)
+                    // 上界不能用 this.height：InputView 为 wrap_content，其高度恒等于
+                    // mSkbRoot.height + bottomPadding，该上界会恒等于当前值本身，
+                    // 使键盘只能向下移动、到底后彻底锁死。改以屏幕高度为基准。
+                    val maxBottom = (env.mScreenHeight - mSkbRootHeight).coerceAtLeast(0)
+                    bottomPaddingValue = (bottomPaddingValue - dy.toInt()).coerceIn(0, maxBottom)
                     initialTouchY = event.rawY
                     if (env.keyboardModeFloat) bottomPadding = bottomPaddingValue else mSkbRoot.bottomPadding = bottomPaddingValue
                 }
@@ -251,6 +261,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         } else {
             mSkbRoot.background = background
         }
+        applyFloatKeyboardOutline(env.keyboardModeFloat)
         mSkbCandidatesBarView.updateTheme(keyTextColor)
         if (::mOnehandHoderLayout.isInitialized) {
             (mOnehandHoderLayout[0] as ImageButton).drawable?.setTint(keyTextColor)
@@ -258,6 +269,28 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
         mFullDisplayKeyboardBar?.updateTheme(keyTextColor)
         mAddPhrasesLayout.updateTheme(activeTheme)
+    }
+
+    /**
+     * 悬浮键盘四角裁圆。背景可能是纯色也可能是主题图片，用轮廓裁剪比替换背景更通用，
+     * 且不受主题实现影响。
+     */
+    private val floatCornerRadius: Float by lazy { DevicesUtils.dip2px(16).toFloat() }
+
+    private val floatOutlineProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, floatCornerRadius)
+        }
+    }
+
+    private fun applyFloatKeyboardOutline(isFloat: Boolean) {
+        if (isFloat) {
+            mSkbRoot.outlineProvider = floatOutlineProvider
+            mSkbRoot.clipToOutline = true
+        } else {
+            mSkbRoot.outlineProvider = ViewOutlineProvider.BACKGROUND
+            mSkbRoot.clipToOutline = false
+        }
     }
 
     private fun onClick(view: View) {
@@ -707,7 +740,9 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             env.systemNavbarWindowsBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val fullDisplayEnable = appPrefs.internal.fullDisplayKeyboardEnable.getValue()
             mLlKeyboardBottomHolder.minimumHeight = when {
-                env.keyboardModeFloat -> 0
+                // 悬浮模式此处是拖动条，高度须与 initView 中的设置一致，
+                // 置 0 会让拖动条塌缩到几乎无法点中
+                env.keyboardModeFloat -> env.heightForKeyboardMove
                 fullDisplayEnable -> env.heightForFullDisplayBar + env.systemNavbarWindowsBottom
                 else -> env.systemNavbarWindowsBottom
             }

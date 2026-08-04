@@ -138,11 +138,10 @@ open class BaseContainer(@JvmField var mContext: Context, @JvmField protected va
                     }
                 }
                 if(dy.absoluteValue > 10 ) {
-                    bottomPaddingValue -= dy.toInt()
-                    bottomPaddingValue = if(bottomPaddingValue < 0) 0
-                    else if(bottomPaddingValue > inputView.height - mSkbRootHeight) {
-                        inputView.height - mSkbRootHeight
-                    } else bottomPaddingValue
+                    // 上界不能用 inputView.height：其为 wrap_content，高度恒等于
+                    // mSkbRoot.height + bottomPadding，会使上界恒等于当前值而无法上移
+                    val maxBottom = (EnvironmentSingleton.instance.mScreenHeight - mSkbRootHeight).coerceAtLeast(0)
+                    bottomPaddingValue = (bottomPaddingValue - dy.toInt()).coerceIn(0, maxBottom)
                     initialTouchY = event.rawY
                     if(EnvironmentSingleton.instance.keyboardModeFloat) {
                         inputView.bottomPadding = bottomPaddingValue
