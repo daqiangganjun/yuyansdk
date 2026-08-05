@@ -360,8 +360,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseLongKeyEvent(result: Pair<PopupMenuMode, String>) {
         val (mode, value) = result
-        if (mode != PopupMenuMode.None && !DecodingInfo.isAssociate && !DecodingInfo.isCandidatesEmpty) {
-            if (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish) chooseAndUpdate()
+        if (mode != PopupMenuMode.None && (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish)) {
+            commitPendingCandidate()
         }
 
         when (mode) {
@@ -388,6 +388,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     override fun responseHandwritingResultEvent(words: Array<CandidateListItem>) {
+        // 有新的识别结果说明用户正在写新内容，此前的自动上屏状态就此作废
+        handwritingAutoCommitted = false
         DecodingInfo.cacheCandidates(words)
     }
 
@@ -395,7 +397,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         val keyCode = sKey.code
         if(sKey.isUserDefKey)processUserDefKey(keyCode, sKey.keyLabel)
         else if(sKey.isUniStrKey){
-            if (!DecodingInfo.isAssociate && !DecodingInfo.isCandidatesEmpty) chooseAndUpdate()
+            commitPendingCandidate()
             sKey.label.takeIf(String::isNotEmpty)?.let {
                 if (SymbolPreset.containsKey(it)) commitPairSymbol(it) else commitText(it)
             }
@@ -496,7 +498,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 return
             }
             !DecodingInfo.isAssociate && !DecodingInfo.isCandidatesEmpty -> {
-                if (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish) chooseAndUpdate()
+                if (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish) commitPendingCandidate()
             }
         }
 
@@ -559,13 +561,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 true
             }
             keyCode != 0 -> {
-                if (!DecodingInfo.isCandidatesEmpty && !DecodingInfo.isAssociate) chooseAndUpdate()
+                commitPendingCandidate()
                 sendKeyEvent(keyCode)
                 resetToIdleState()
                 true
             }
             label.isNotEmpty() -> {
-                if (!DecodingInfo.isCandidatesEmpty && !DecodingInfo.isAssociate) chooseAndUpdate()
+                commitPendingCandidate()
                 if (SymbolPreset.containsKey(label)) commitPairSymbol(label) else commitText(label)
                 true
             }
@@ -615,10 +617,30 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 不走 chooseAndUpdate：其手写分支在选词后会 reset() 清空候选，而此处需要
      * 保留候选列表，让用户上屏后仍能看到识别出的其它字。
      */
+    /** 手写已自动上屏，保留的候选仅供查看，后续输入不得再次上屏 */
+    private var handwritingAutoCommitted = false
+
+    /**
+     * 输入其它内容前先确认待选的候选词。
+     *
+     * 手写自动上屏后候选被刻意保留下来供查看，若仍按常规逻辑「先上屏首选再输入」，
+     * 点符号就会把同一个字再上屏一次而出现重复字。此种情形只需清空候选。
+     */
+    private fun commitPendingCandidate() {
+        if (DecodingInfo.isAssociate || DecodingInfo.isCandidatesEmpty) return
+        if (handwritingAutoCommitted) {
+            handwritingAutoCommitted = false
+            resetCandidateWindow()
+        } else {
+            chooseAndUpdate()
+        }
+    }
+
     fun commitHandwritingFirstCandidate() {
         if (DecodingInfo.isCandidatesEmpty) return
         val first = DecodingInfo.getCandidate(0)?.text ?: return
         if (first.isEmpty()) return
+        handwritingAutoCommitted = true
         // 上屏会触发 onUpdateSelection 进而以已上屏文本查联想词，把手写候选覆盖掉，
         // 故抑制紧随其后的那一次联想，保住候选列表。
         // 仅在联想确实会发生时置位，否则标志无人消费会残留到下一次输入
