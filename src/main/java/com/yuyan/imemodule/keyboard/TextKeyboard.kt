@@ -279,7 +279,6 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
          */
         private fun isFunctionKey(code: Int): Boolean = when (code) {
             KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_SPACE,
             KeyEvent.KEYCODE_DEL,
             KeyEvent.KEYCODE_SHIFT_LEFT,
             KeyEvent.KEYCODE_CLEAR,          // 九键「重输」

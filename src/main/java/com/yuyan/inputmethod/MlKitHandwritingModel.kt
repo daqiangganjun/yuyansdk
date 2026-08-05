@@ -72,6 +72,9 @@ object MlKitHandwritingModel {
         if (state == State.Downloading) return
         RemoteModelManager.getInstance().isModelDownloaded(model)
             .addOnSuccessListener { downloaded ->
+                // 查询是异步的，回调到达时下载可能已经开始；此时这份结果已过期，
+                // 若照旧写入会把「下载中」冲掉，表现为进度圈凭空消失
+                if (state == State.Downloading) return@addOnSuccessListener
                 if (downloaded) {
                     ensureRecognizer()
                     update(State.Downloaded)
@@ -80,6 +83,7 @@ object MlKitHandwritingModel {
                 }
             }
             .addOnFailureListener { e ->
+                if (state == State.Downloading) return@addOnFailureListener
                 update(State.Failed(e.message ?: "查询失败"))
             }
     }

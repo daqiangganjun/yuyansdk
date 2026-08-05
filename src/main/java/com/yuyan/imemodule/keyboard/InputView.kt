@@ -206,7 +206,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             val fullDisplayEnable = appPrefs.internal.fullDisplayKeyboardEnable.getValue()
             if (fullDisplayEnable && !env.isLandscape) {
                 mFullDisplayKeyboardBar = FullDisplayKeyboardBar(context, this)
-                mLlKeyboardBottomHolder.addView(mFullDisplayKeyboardBar)
+                // 显式指定高度：此前未给 LayoutParams，该栏按内容撑开，
+                // heightForFullDisplayBar 只落在 minimumHeight 上而形同虚设
+                mLlKeyboardBottomHolder.addView(mFullDisplayKeyboardBar, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, env.heightForFullDisplayBar))
                 mLlKeyboardBottomHolder.minimumHeight = env.heightForFullDisplayBar + env.systemNavbarWindowsBottom
             } else {
                 mLlKeyboardBottomHolder.minimumHeight = env.systemNavbarWindowsBottom
