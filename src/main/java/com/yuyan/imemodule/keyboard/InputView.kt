@@ -291,8 +291,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             val radius = DevicesUtils.dip2px(8).toFloat()
             this.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                // 只做上方两角，下沿与键盘齐平不留圆角
-                cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                if (env.keyboardModeFloat) {
+                    // 悬浮键盘四角皆圆，气泡若下沿取直会显得突兀，故四角同样圆润
+                    cornerRadius = radius
+                } else {
+                    // 贴底键盘：下沿与键盘齐平，只做上方两角
+                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                }
                 setColor(activeTheme.keyboardColor)
             }
         }
