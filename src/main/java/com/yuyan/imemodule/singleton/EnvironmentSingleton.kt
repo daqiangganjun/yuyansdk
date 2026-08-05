@@ -82,7 +82,9 @@ class EnvironmentSingleton private constructor() {
         heightForCandidatesArea = (heightForcomposing * 2.9).toInt()
         composingTextSize = DevicesUtils.px2sp (heightForcomposing)
         candidateTextSize = DevicesUtils.px2sp (heightForCandidates)
-        heightForFullDisplayBar = (heightForCandidatesArea * 0.175f).toInt()
+        // 仅作为底栏容器的最小高度下限，实际高度由 FullDisplayKeyboardBar 的
+        // 内边距与图标决定；此处放低下限，避免它反过来限制底栏变矮
+        heightForFullDisplayBar = (heightForCandidatesArea * 0.25f).toInt()
         heightForKeyboardMove = (heightForCandidatesArea * 0.2f).toInt()
 
         val keyboardFontSizeRatio = prefs.keyboardFontSize.getValue()/100f

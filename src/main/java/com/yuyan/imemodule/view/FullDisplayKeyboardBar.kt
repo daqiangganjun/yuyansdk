@@ -22,7 +22,6 @@ import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import splitties.dimensions.dp
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.lParams
-import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
 import kotlin.math.abs
 
@@ -39,9 +38,9 @@ class FullDisplayKeyboardBar(context: Context?, inputView: InputView) : LinearLa
     private val mCenterModeMove: Boolean
     init {
         mInputView = inputView
-        // 高度由 InputView 按 heightForFullDisplayBar 指定，此处只留左右边距；
-        // 上下若再留白会挤压图标，需要更高可自行上移键盘
-        setPadding(dp(20), 0, dp(20), 0)
+        // 该栏高度由此内边距与图标共同决定，收紧上下留白即可变矮；
+        // 需要更高可自行上移键盘
+        setPadding(dp(20), dp(4), dp(20), dp(8))
         val fullDisplayKeyLeft = AppPrefs.getInstance().internal.fullDisplayKeyModeLeft.getValue()
         val fullDisplayKeyRight = AppPrefs.getInstance().internal.fullDisplayKeyModeRight.getValue()
         val centerMode = FullDisplayCenterMode.decode(AppPrefs.getInstance().internal.fullDisplayCenterMode.getValue())
@@ -65,12 +64,9 @@ class FullDisplayKeyboardBar(context: Context?, inputView: InputView) : LinearLa
                 onClick(FullDisplayKeyMode.decode(AppPrefs.getInstance().internal.fullDisplayKeyModeRight.getValue()))
             }
         }
-        // 图标按容器高度等比缩放，这样底栏高度可由配置单点控制
-        mIVKeyLeft.scaleType = ImageView.ScaleType.FIT_CENTER
-        mIVKeyRight.scaleType = ImageView.ScaleType.FIT_CENTER
-        add(mIVKeyLeft, lParams(width = wrapContent,height = matchParent, weight = 0f))
-        add(mLLCenter, lParams(width = 0,height = matchParent, weight = 1f))
-        add(mIVKeyRight, lParams(width = wrapContent,height = matchParent, weight = 0f))
+        add(mIVKeyLeft, lParams(width = wrapContent,height = wrapContent, weight = 0f))
+        add(mLLCenter, lParams(width = 0,height = wrapContent, weight = 1f))
+        add(mIVKeyRight, lParams(width = wrapContent,height = wrapContent, weight = 0f))
         isClickable = true
         isEnabled = true
     }
