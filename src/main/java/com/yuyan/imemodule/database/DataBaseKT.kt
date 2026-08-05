@@ -23,7 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
-@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 6, exportSchema = false)
+@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 7, exportSchema = false)
 abstract class DataBaseKT : RoomDatabase() {
     abstract fun sideSymbolDao(): SideSymbolDao
     abstract fun clipboardDao(): ClipboardDao
@@ -54,6 +54,16 @@ abstract class DataBaseKT : RoomDatabase() {
             }
         }
 
+        // 顶栏菜单改为按 position 排序，为老库补上顺序并加入「切换键盘」
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE skbfun SET position = 0 WHERE name = 'ClipBoard' AND isKeep = 1")
+                db.execSQL("UPDATE skbfun SET position = 1 WHERE name = 'Emojicon' AND isKeep = 1")
+                db.execSQL("UPDATE skbfun SET position = 2 WHERE name = 'TextEdit' AND isKeep = 1")
+                db.execSQL("INSERT OR IGNORE INTO skbfun (name, isKeep, position) VALUES ('SwitchKeyboard', 1, 3)")
+            }
+        }
+
         // 数字行功能已移除，清理历史库中残留的菜单记录，否则解码时会遇到未知枚举名
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -80,6 +90,7 @@ abstract class DataBaseKT : RoomDatabase() {
             .addMigrations(MIGRATION_3_4)
             .addMigrations(MIGRATION_4_5)
             .addMigrations(MIGRATION_5_6)
+            .addMigrations(MIGRATION_6_7)
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
@@ -127,9 +138,11 @@ abstract class DataBaseKT : RoomDatabase() {
             }
             if(instance.skbFunDao().getAllMenu().isEmpty()) {
                 val skbFuns = listOf(
-                    SkbFun(name = SkbMenuMode.ClipBoard.name, isKeep = 1),
-                    SkbFun(name = SkbMenuMode.Emojicon.name, isKeep = 1),
-                    SkbFun(name = SkbMenuMode.TextEdit.name, isKeep = 1),
+                    // isKeep = 1 为候选栏顶部菜单，列表 reverseLayout，position 越大越靠左
+                    SkbFun(name = SkbMenuMode.ClipBoard.name, isKeep = 1, position = 0),
+                    SkbFun(name = SkbMenuMode.Emojicon.name, isKeep = 1, position = 1),
+                    SkbFun(name = SkbMenuMode.TextEdit.name, isKeep = 1, position = 2),
+                    SkbFun(name = SkbMenuMode.SwitchKeyboard.name, isKeep = 1, position = 3),
                     SkbFun(name = SkbMenuMode.Emojicon.name, isKeep = 0, position = 0),
                     SkbFun(name = SkbMenuMode.SwitchKeyboard.name, isKeep = 0, position = 1),
                     SkbFun(name = SkbMenuMode.KeyboardHeight.name, isKeep = 0, position = 2),

@@ -38,7 +38,9 @@ class FullDisplayKeyboardBar(context: Context?, inputView: InputView) : LinearLa
     private val mCenterModeMove: Boolean
     init {
         mInputView = inputView
-        setPadding(dp(20), dp(10), dp(20), dp(20))
+        // 该栏高度实际由此内边距与图标撑开，heightForFullDisplayBar 仅作用于容器的
+        // minimumHeight，改那里并不会变矮。此处收紧上下留白，需要更高可自行上移键盘
+        setPadding(dp(20), dp(4), dp(20), dp(8))
         val fullDisplayKeyLeft = AppPrefs.getInstance().internal.fullDisplayKeyModeLeft.getValue()
         val fullDisplayKeyRight = AppPrefs.getInstance().internal.fullDisplayKeyModeRight.getValue()
         val centerMode = FullDisplayCenterMode.decode(AppPrefs.getInstance().internal.fullDisplayCenterMode.getValue())
