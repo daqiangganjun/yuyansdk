@@ -26,7 +26,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val inputDefaultMode = int("input_default_method_mode", InputModeSwitcher.MODE_T9_CHINESE)   //默认输入法类型
         val inputMethodPinyinMode = int("input_method_pinyin_mode", InputModeSwitcher.MODE_T9_CHINESE)  // 保存中文输入法类型
         val dataDictVersion = int("rime_dict_data_version", 0)  //缓存rime词库版本号,用于校验是否覆盖词库文件
-        val keyboardHeightRatio = float("keyboard_height_ratio", 0.3f)     //键盘高度比例
+        val keyboardHeightRatio = float("keyboard_height_ratio", 0.27f)     //键盘高度比例
         val keyboardHeightRatioLandscape = float("keyboard_height_ratio_landscape", 0.5f)     //键盘高度比例:横屏
         val candidatesHeightRatio = float("candidates_height_ratio", 0.035f)     //候选词栏高度比例
         val candidatesHeightRatioLandscape = float("candidates_height_ratio_landscape", 0.06f)     //候选词栏高度比例:横屏

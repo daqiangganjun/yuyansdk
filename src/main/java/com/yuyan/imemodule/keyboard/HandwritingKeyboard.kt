@@ -15,7 +15,6 @@ import com.yuyan.imemodule.entity.handwriting.TimedPoint
 import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
-import android.widget.Toast
 import com.google.mlkit.vision.digitalink.Ink
 import com.yuyan.imemodule.R
 import com.yuyan.inputmethod.MlKitHandwritingEngine
@@ -250,23 +249,14 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
 
     private fun recognitionData() {
         if (!MlKitHandwritingModel.isReady) {
-            // 模型未下载时给出明确提示，而非静默无响应
-            notifyModelUnavailable()
+            // 提示与下载入口由覆盖在手写区域上的 HandwritingModelTipView 常驻呈现，
+            // 此处只需触发一次状态刷新即可
+            MlKitHandwritingModel.refreshState()
             return
         }
         MlKitHandwritingEngine.recognize(mInkBuilder.build()) { item ->
             mService?.postDelayed({ mService!!.responseHandwritingResultEvent(item) }, 20)
         }
-    }
-
-    private var modelTipShown = false
-
-    /** 同一次输入会话内只提示一次，避免每落一笔都弹 */
-    private fun notifyModelUnavailable() {
-        MlKitHandwritingModel.refreshState()
-        if (modelTipShown) return
-        modelTipShown = true
-        Toast.makeText(context, R.string.hw_model_unavailable_tip, Toast.LENGTH_LONG).show()
     }
 
     private fun addInkPoint(x: Float, y: Float) {

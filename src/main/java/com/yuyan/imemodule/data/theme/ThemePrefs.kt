@@ -90,7 +90,7 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
 
 
     val keyboardFontBold =
-        switch(R.string.keyboard_font_bold, "keyboard_font_bold_enable", true)
+        switch(R.string.keyboard_font_bold, "keyboard_font_bold_enable", false)
 
     val keyboardFontSize = int(
         R.string.keyboard_font_size,

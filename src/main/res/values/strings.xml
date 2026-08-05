@@ -51,7 +51,12 @@
     <string name="hw_model_state_failed">下载失败：%1$s</string>
     <string name="hw_model_delete_title">删除手写模型</string>
     <string name="hw_model_delete_message">删除后需重新下载才能使用手写输入，确定删除？</string>
-    <string name="hw_model_unavailable_tip">手写模型尚未下载，请到设置的手写页面下载</string>
+    <string name="hw_model_board_not_downloaded">手写需先下载识别模型（约 20MB）</string>
+    <string name="hw_model_board_downloading">正在下载识别模型，请保持网络连接…</string>
+    <string name="hw_model_board_failed">模型下载失败\n%1$s</string>
+    <string name="hw_model_board_download">下载模型</string>
+    <string name="hw_model_board_retry">重试</string>
+    <string name="hw_model_board_settings">前往设置</string>
     <string name="keyboard_theme_night">深色模式</string>
     <!--设置输入法高度-->
     <string name="setting_ime_keyboard_height_reset">重置</string>

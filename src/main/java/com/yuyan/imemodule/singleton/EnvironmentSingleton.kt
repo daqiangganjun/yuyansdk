@@ -82,12 +82,16 @@ class EnvironmentSingleton private constructor() {
         heightForCandidatesArea = (heightForcomposing * 2.9).toInt()
         composingTextSize = DevicesUtils.px2sp (heightForcomposing)
         candidateTextSize = DevicesUtils.px2sp (heightForCandidates)
-        heightForFullDisplayBar = (heightForCandidatesArea * 0.7f).toInt()
+        heightForFullDisplayBar = (heightForCandidatesArea * 0.35f).toInt()
         heightForKeyboardMove = (heightForCandidatesArea * 0.2f).toInt()
 
         val keyboardFontSizeRatio = prefs.keyboardFontSize.getValue()/100f
-        keyTextSize = (skbHeight * 0.06f * keyboardFontSizeRatio).toInt()
-        keyTextSmallSize = (skbHeight * 0.04f * keyboardFontSizeRatio).toInt()
+        // 字号基准取默认高度而非当前高度：否则拉伸键盘会连带改变字号，
+        // 而用户调整的是高度、并不期望字号跟着变
+        val fontBaseHeight = screenHeightVertical *
+            (if (isLandscape && !keyboardModeFloat) FONT_BASE_RATIO_LANDSCAPE else FONT_BASE_RATIO)
+        keyTextSize = (fontBaseHeight * 0.06f * keyboardFontSizeRatio).toInt()
+        keyTextSmallSize = (fontBaseHeight * 0.04f * keyboardFontSizeRatio).toInt()
         keyXMargin = (prefs.keyXMargin.getValue() / 1000f * skbWidth).toInt()
         keyYMargin = (prefs.keyYMargin.getValue() / 1000f * skbHeight).toInt()
         inputAreaHeight = skbHeight + heightForCandidatesArea
@@ -124,6 +128,10 @@ class EnvironmentSingleton private constructor() {
         get() = if(!instance.keyboardModeFloat) (instance.inputAreaWidth - instance.skbWidth)/2 else 0
 
     companion object {
+        /** 字号基准所用的键盘高度比例，与用户可调的 keyboardHeightRatio 解耦 */
+        private const val FONT_BASE_RATIO = 0.3f
+        private const val FONT_BASE_RATIO_LANDSCAPE = 0.5f
+
         private var mInstance: EnvironmentSingleton? = null
         @JvmStatic
 		val instance: EnvironmentSingleton

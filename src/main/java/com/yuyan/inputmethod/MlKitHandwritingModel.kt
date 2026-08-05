@@ -33,9 +33,17 @@ object MlKitHandwritingModel {
     var state: State = State.Unknown
         private set
 
-    /** 状态变化回调，供设置界面刷新显示 */
-    @Volatile
-    var onStateChanged: ((State) -> Unit)? = null
+    /** 状态观察者。设置界面与手写键盘会同时监听，故用集合而非单个回调 */
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(State) -> Unit>()
+
+    fun addListener(listener: (State) -> Unit) {
+        listeners.addIfAbsent(listener)
+        listener(state)
+    }
+
+    fun removeListener(listener: (State) -> Unit) {
+        listeners.remove(listener)
+    }
 
     private val identifier: DigitalInkRecognitionModelIdentifier? = runCatching {
         DigitalInkRecognitionModelIdentifier.fromLanguageTag(LANGUAGE_TAG)
@@ -50,7 +58,7 @@ object MlKitHandwritingModel {
 
     private fun update(newState: State) {
         state = newState
-        onStateChanged?.invoke(newState)
+        listeners.forEach { it(newState) }
     }
 
     /**

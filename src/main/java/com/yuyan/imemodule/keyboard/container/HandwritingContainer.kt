@@ -23,6 +23,7 @@ import com.yuyan.imemodule.utils.KeyboardLoaderUtil.Companion.instance
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.HandwritingKeyboard
 import com.yuyan.imemodule.libs.recyclerview.SwipeRecyclerView
+import com.yuyan.imemodule.view.HandwritingModelTipView
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.endOfParent
 import splitties.views.dsl.constraintlayout.lParams
@@ -40,6 +41,7 @@ import splitties.views.dsl.core.matchParent
 @SuppressLint("ViewConstructor")
 class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseContainer(context, inputView) {
     private val mSideSymbolsPinyin:List<SideSymbol>
+    private var mModelTipView: HandwritingModelTipView? = null
     // 键盘界面上符号(T9左侧、手写右侧)
     private var mRVRightSymbols: SwipeRecyclerView = inflate(getContext(), R.layout.sdk_view_rv_prefix, null) as SwipeRecyclerView
     private val mLlAddSymbol : LinearLayout = LinearLayout(context).apply{
@@ -73,10 +75,31 @@ class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseC
             addView(mMajorView, params)
             (mMajorView as HandwritingKeyboard).setResponseKeyEvent(inputView)
         }
+        ensureModelTipView()
         val softKeyboard = instance.getSoftKeyboard(InputModeSwitcher.MASK_SKB_LAYOUT_HANDWRITING)
         mMajorView!!.setSoftKeyboard(softKeyboard)
         updateKeyboardView()
         mMajorView!!.invalidate()
+    }
+
+    /**
+     * 模型未就绪时在手写区域上覆盖提示与下载入口。
+     * 视图自身监听模型状态，就绪后会自动隐藏，故只需保证已挂载。
+     */
+    private fun ensureModelTipView() {
+        if (mModelTipView != null) return
+        val tip = HandwritingModelTipView(context) {
+            AppUtil.launchSettingsToHandwriting(context)
+        }
+        mModelTipView = tip
+        addView(tip, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            startToStart = LayoutParams.PARENT_ID
+            endToEnd = LayoutParams.PARENT_ID
+            topToTop = LayoutParams.PARENT_ID
+            bottomToBottom = LayoutParams.PARENT_ID
+            marginStart = dp(24)
+            marginEnd = dp(24)
+        })
     }
 
     // 更新键盘上侧边符号列表

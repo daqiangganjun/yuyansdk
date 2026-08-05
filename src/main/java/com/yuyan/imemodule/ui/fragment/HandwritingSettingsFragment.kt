@@ -26,18 +26,19 @@ class HandwritingSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstanc
         screen.addPreference(modelPreference!!)
     }
 
+    // 回调可能来自后台线程，切回主线程刷新
+    private val stateListener: (MlKitHandwritingModel.State) -> Unit = { state ->
+        activity?.runOnUiThread { renderState(state) }
+    }
+
     override fun onResume() {
         super.onResume()
-        MlKitHandwritingModel.onStateChanged = { state ->
-            // 回调可能来自后台线程，切回主线程刷新
-            activity?.runOnUiThread { renderState(state) }
-        }
-        renderState(MlKitHandwritingModel.state)
+        MlKitHandwritingModel.addListener(stateListener)
         MlKitHandwritingModel.refreshState()
     }
 
     override fun onPause() {
-        MlKitHandwritingModel.onStateChanged = null
+        MlKitHandwritingModel.removeListener(stateListener)
         super.onPause()
     }
 
