@@ -307,6 +307,10 @@ class ImeService : InputMethodService() {
         return currentInputConnection.getTextBeforeCursor(length, 0).toString()
     }
 
+    fun getTextAfterCursor(length:Int) : String {
+        return currentInputConnection?.getTextAfterCursor(length, 0)?.toString() ?: ""
+    }
+
     fun commitTextEditMenu(id:Int) {
         currentInputConnection.performContextMenuAction(id)
     }

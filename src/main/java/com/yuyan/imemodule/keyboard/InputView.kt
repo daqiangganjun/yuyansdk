@@ -724,6 +724,25 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      */
     fun clearTextBeforeCursors() = textBeforeCursors.clear()
 
+    /**
+     * 判断左右方向键是否已顶到文本边界。
+     *
+     * 选择模式下方向键用于扩展选区，不做拦截；上下方向键涉及多行位置，无法仅凭
+     * 前后文判断，一并放行。
+     */
+    private fun isCursorAtEdge(keyCode: Int): Boolean {
+        if (hasSelection) return false
+        // 部分输入框（如密码框）会拒绝提供上下文，此时读取失败一律放行，
+        // 宁可保持原有行为也不要误判成边界而卡住光标
+        return runCatching {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> service.getTextBeforeCursor(1).isEmpty()
+                KeyEvent.KEYCODE_DPAD_RIGHT -> service.getTextAfterCursor(1).isEmpty()
+                else -> false
+            }
+        }.getOrDefault(false)
+    }
+
     private fun sendKeyEvent(keyCode: Int) {
         if (isAddPhrases) {
             mAddPhrasesLayout.sendKeyEvent(keyCode)
@@ -736,6 +755,9 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             when (keyCode) {
                 KeyEvent.KEYCODE_ENTER -> service.sendEnterKeyEvent()
                 in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    // 光标已在首/末时不再下发方向键：越界的方向键会被应用当作焦点导航，
+                    // 焦点跳到相邻控件后输入框失焦，表现为光标消失、甚至键盘被收起
+                    if (isCursorAtEdge(keyCode)) return
                     service.sendCombinationKeyEvents(keyCode, shift = hasSelection)
                     if (hasSelectionAll) hasSelectionAll = false
                 }
