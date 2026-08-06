@@ -82,6 +82,11 @@ class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseC
         mMajorView!!.invalidate()
     }
 
+    /** 候选已确认，重置笔迹以免紧接着书写的新字带上上一个字的笔划 */
+    fun resetHandwriting() {
+        (mMajorView as? HandwritingKeyboard)?.resetForNewChar()
+    }
+
     /**
      * 模型未就绪时在手写区域上覆盖提示与下载入口。
      * 视图自身监听模型状态，就绪后会自动隐藏，故只需保证已挂载。

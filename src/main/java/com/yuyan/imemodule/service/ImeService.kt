@@ -96,6 +96,8 @@ class ImeService : InputMethodService() {
      * 其中残留的编辑框内容还会跨应用留存。
      */
     override fun onFinishInput() {
+        // 离开输入框时落定尚未确定的手写文本，否则其状态会残留到下一个输入框
+        mInputView?.finishHandwritingComposing()
         DecodingInfo.reset()
         YuyanEmojiCompat.setEditorInfo(null)
         mInputView?.clearTextBeforeCursors()
@@ -286,7 +288,8 @@ class ImeService : InputMethodService() {
      * 结束提交预选词
      */
     fun finishComposingText() {
-        currentInputConnection.finishComposingText()
+        // onFinishInput 等时机下连接可能已断开
+        currentInputConnection?.finishComposingText()
     }
 
     /**

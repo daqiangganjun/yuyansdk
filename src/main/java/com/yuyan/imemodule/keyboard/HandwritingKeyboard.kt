@@ -35,7 +35,7 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private val mPointsCache: MutableList<TimedPoint> = ArrayList<TimedPoint>()
     private val mControlTimedPointsCached = ControlTimedPoints()
     private var mLastUpTime: Long = 0 //记录上次手写抬手时间，与本次按下时间对比。
-    private var autoCommitted = false // 本字是否已由停笔定时自动上屏，避免落笔时重复提交
+    private var composed = false // 本字是否已由停笔定时置为组合文本，避免重复触发
     private val mSBPoint: MutableList<Short?> = LinkedList()
     // 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集。
     // 刻意不使用 ML Kit 的 Ink 类型——那会把 ML Kit 加载进主进程，令进程隔离失效。
@@ -103,12 +103,9 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                 mPoints.clear()
                 addPoint(getNewPoint(eventX, eventY))
                 if (mLastUpTime != 0L && System.currentTimeMillis() - mLastUpTime > times) {
-                    // 停笔定时若已自动上屏，此处不再重复提交
-                    if (!autoCommitted) mService!!.responseKeyEvent(SoftKey(InputModeSwitcher.USER_KEYCODE_SELECTED))
-                    autoCommitted = false
-                    mSBPoint.clear()
-                    resetInk()
-                    clear()
+                    // 开始写新字：上一个字若仍处于组合态就此落定，尚未进入组合态的则先补上
+                    mService?.confirmHandwritingBeforeNewChar()
+                    resetForNewChar()
                 }
                 addInkPoint(eventX, eventY)
             }
@@ -283,6 +280,20 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
         mInkStrokes.clear()
     }
 
+    /**
+     * 上一个字已确认，就此另起一字。
+     *
+     * 落笔时的停笔超时判断只能识别「写完停顿再写」，用户若选完候选立刻书写，
+     * 新笔划会叠加到上一个字上，故确认候选后须显式重置。
+     */
+    fun resetForNewChar() {
+        composed = false
+        mLastUpTime = 0
+        mSBPoint.clear()
+        resetInk()
+        clear()
+    }
+
     fun updatePathDelayed() {
         runnable.let { handler?.removeCallbacks(it) }
         handler?.postDelayed(runnable, times)
@@ -290,14 +301,17 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
 
     // 清空笔迹
     var runnable = Runnable {
-        autoCommitHandwriting()
+        composeHandwritingResult()
         clear()
     }
 
-    /** 停笔超过设定时长即自动上屏首选，候选列表保留 */
-    private fun autoCommitHandwriting() {
-        if (autoCommitted || mSBPoint.isEmpty()) return
-        mService?.commitHandwritingFirstCandidate()
-        autoCommitted = true
+    /**
+     * 停笔超过设定时长即把首选置为组合文本：带下划线显示于输入框但尚未落定，
+     * 候选列表保留，用户可继续改选，也可不管它直接写下一个字。
+     */
+    private fun composeHandwritingResult() {
+        if (composed || mSBPoint.isEmpty()) return
+        mService?.composeHandwritingFirstCandidate()
+        composed = true
     }
 }
