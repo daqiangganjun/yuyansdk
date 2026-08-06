@@ -15,10 +15,15 @@ import com.yuyan.imemodule.entity.handwriting.TimedPoint
 import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
-import com.google.mlkit.vision.digitalink.Ink
 import com.yuyan.imemodule.R
-import com.yuyan.inputmethod.MlKitHandwritingEngine
-import com.yuyan.inputmethod.MlKitHandwritingModel
+import com.yuyan.imemodule.handwriting.HandwritingClient
+import com.yuyan.imemodule.handwriting.InkStrokes
+import com.yuyan.imemodule.libs.pinyin4j.PinyinHelper
+import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinCaseType
+import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinOutputFormat
+import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinToneType
+import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinVCharType
+import com.yuyan.inputmethod.core.CandidateListItem
 import java.util.LinkedList
 import kotlin.math.ceil
 import kotlin.math.max
@@ -32,9 +37,9 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private var mLastUpTime: Long = 0 //记录上次手写抬手时间，与本次按下时间对比。
     private var autoCommitted = false // 本字是否已由停笔定时自动上屏，避免落笔时重复提交
     private val mSBPoint: MutableList<Short?> = LinkedList()
-    // ML Kit 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集
-    private var mInkBuilder = Ink.builder()
-    private var mStrokeBuilder: Ink.Stroke.Builder? = null
+    // 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集。
+    // 刻意不使用 ML Kit 的 Ink 类型——那会把 ML Kit 加载进主进程，令进程隔离失效。
+    private val mInkStrokes = InkStrokes()
     private var mPoints: MutableList<TimedPoint> =  ArrayList<TimedPoint>()
     private var mLastVelocity = 0f
     private var mLastWidth = 0f
@@ -45,6 +50,11 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private var mSignatureBitmap: Bitmap? = null
     private var mSignatureBitmapCanvas: Canvas? = null
     private val times = 1200L - getInstance().handwriting.handWritingSpeed.getValue()  // 默认1.3s
+    private val pinyinFormat = HanyuPinyinOutputFormat().apply {
+        caseType = HanyuPinyinCaseType.LOWERCASE
+        toneType = HanyuPinyinToneType.WITH_TONE_MARK
+        vCharType = HanyuPinyinVCharType.WITH_U_UNICODE
+    }
 
     init {
         this.mPaint.setColor(ThemeManager.activeTheme.keyTextColor)
@@ -100,7 +110,6 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                     resetInk()
                     clear()
                 }
-                mStrokeBuilder = Ink.Stroke.builder()
                 addInkPoint(eventX, eventY)
             }
             MotionEvent.ACTION_MOVE -> {
@@ -115,8 +124,7 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
                 mSBPoint.add(-1)
                 mSBPoint.add(0)
                 addInkPoint(eventX, eventY)
-                mStrokeBuilder?.let { mInkBuilder.addStroke(it.build()) }
-                mStrokeBuilder = null
+                mInkStrokes.endStroke()
                 recognitionData()
                 updatePathDelayed()
             }
@@ -248,25 +256,31 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     }
 
     private fun recognitionData() {
-        if (!MlKitHandwritingModel.isReady) {
+        if (!HandwritingClient.isReady) {
             // 提示与下载入口由覆盖在手写区域上的 HandwritingModelTipView 常驻呈现，
             // 此处只需触发一次状态刷新即可
-            MlKitHandwritingModel.refreshState()
+            HandwritingClient.refresh()
             return
         }
-        MlKitHandwritingEngine.recognize(mInkBuilder.build()) { item ->
-            mService?.postDelayed({ mService!!.responseHandwritingResultEvent(item) }, 20)
+        HandwritingClient.recognize(mInkStrokes) { texts ->
+            // 手写进程只回文本，拼音标注在主进程完成，以免 :hw 再加载一份 pinyin4j 词表
+            val items = texts.map { text ->
+                CandidateListItem(
+                    PinyinHelper.toHanYuPinyin(text, pinyinFormat, "'").ifEmpty { text },
+                    text
+                )
+            }.toTypedArray()
+            mService?.postDelayed({ mService!!.responseHandwritingResultEvent(items) }, 20)
         }
     }
 
     private fun addInkPoint(x: Float, y: Float) {
-        mStrokeBuilder?.addPoint(Ink.Point.create(x, y, System.currentTimeMillis()))
+        mInkStrokes.addPoint(x, y, System.currentTimeMillis())
     }
 
     /** 一个字书写完毕后重置笔迹，避免下一个字带上上一个字的笔划 */
     private fun resetInk() {
-        mInkBuilder = Ink.builder()
-        mStrokeBuilder = null
+        mInkStrokes.clear()
     }
 
     fun updatePathDelayed() {

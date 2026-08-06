@@ -48,6 +48,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/cropper_library_file_paths"/>
         </provider>
+
+        <!-- 手写识别独立进程。ML Kit 及其连带的 GMS、WorkManager、遥测框架仅在此进程
+             加载，切离手写键盘即解绑，进程随之终止，占用一次性归还系统。 -->
+        <service
+            android:name=".handwriting.HandwritingService"
+            android:exported="false"
+            android:process=":hw" />
     </application>
 
 </manifest>

@@ -10,8 +10,9 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.data.theme.ThemeManager
+import com.yuyan.imemodule.handwriting.HandwritingClient
+import com.yuyan.imemodule.handwriting.HandwritingState
 import com.yuyan.imemodule.utils.DevicesUtils
-import com.yuyan.inputmethod.MlKitHandwritingModel
 import splitties.dimensions.dp
 
 /**
@@ -35,6 +36,9 @@ class HandwritingModelTipView(context: Context, private val onOpenSettings: () -
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER
+        // 默认隐藏：挂载到容器后、首次 render 之前会先绘制一帧，若沿用 VISIBLE
+        // 便会闪出一个内容尚未填充的空框。是否显示一律由 render 决定
+        visibility = GONE
         setPadding(dp(16), dp(12), dp(16), dp(12))
         val theme = ThemeManager.activeTheme
         background = GradientDrawable().apply {
@@ -53,7 +57,7 @@ class HandwritingModelTipView(context: Context, private val onOpenSettings: () -
             visibility = GONE
         }
         actionButton = Button(context).apply {
-            setOnClickListener { MlKitHandwritingModel.download() }
+            setOnClickListener { HandwritingClient.download() }
         }
         settingsButton = Button(context).apply {
             text = context.getString(R.string.hw_model_board_settings)
@@ -75,33 +79,35 @@ class HandwritingModelTipView(context: Context, private val onOpenSettings: () -
         })
     }
 
-    private val stateListener: (MlKitHandwritingModel.State) -> Unit = { state ->
+    private val stateListener: (HandwritingState) -> Unit = { state ->
         post { render(state) }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        MlKitHandwritingModel.addListener(stateListener)
-        MlKitHandwritingModel.refreshState()
+        HandwritingClient.addListener(stateListener)
+        HandwritingClient.refresh()
     }
 
     override fun onDetachedFromWindow() {
-        MlKitHandwritingModel.removeListener(stateListener)
+        HandwritingClient.removeListener(stateListener)
         super.onDetachedFromWindow()
     }
 
-    private fun render(state: MlKitHandwritingModel.State) {
+    private fun render(state: HandwritingState) {
         when (state) {
-            MlKitHandwritingModel.State.Downloaded -> {
+            // Unknown 表示查询尚未返回（:hw 进程冷启动需数百毫秒）。此时若按「未下载」
+            // 渲染，已下载的用户会看到提示框一闪而过，故与已下载一同隐藏，待状态明确再定
+            HandwritingState.Downloaded, HandwritingState.Unknown -> {
                 visibility = GONE
                 return
             }
-            MlKitHandwritingModel.State.Downloading -> {
+            HandwritingState.Downloading -> {
                 messageView.text = context.getString(R.string.hw_model_board_downloading)
                 progressBar.visibility = VISIBLE
                 actionButton.visibility = GONE
             }
-            is MlKitHandwritingModel.State.Failed -> {
+            is HandwritingState.Failed -> {
                 messageView.text = context.getString(R.string.hw_model_board_failed, state.message)
                 progressBar.visibility = GONE
                 actionButton.visibility = VISIBLE

@@ -104,7 +104,15 @@ dependencies {
     // 手写识别：搜狗商业库的授权绑定原包名，本分支改名后失效，改用可离线运行的 ML Kit。
     // 注意其中文模型不随包分发，需运行时下载一次，见 MlKitHandwritingModel。
     // 固定 17.0.1：19.x 由 Kotlin 2.1 编译，与本项目的 Kotlin 1.9.22 元数据不兼容
+    //
+    // 曾尝试排除 transport-backend-cct（Google 遥测的上传实现）以从源头去除上传能力，
+    // 但 ML Kit 的依赖注入图在初始化时即强制实例化 CCTDestination，缺类会直接
+    // NoClassDefFoundError 崩溃，故必须保留。改为在 manifest 中移除其后端发现服务与
+    // 两个调度器：类虽在，却既注册不到后端也无法被调度，事件无从上传。
     implementation 'com.google.mlkit:digital-ink-recognition:17.0.1'
+    // ML Kit 下载模型所依赖，本为其传递依赖；因 HandwritingService 需在 :hw 进程内
+    // 手动 WorkManager.initialize()（自动初始化已在 manifest 中移除）而显式声明
+    implementation 'androidx.work:work-runtime:2.7.0'
     implementation "androidx.room:room-runtime:2.6.1"
     ksp "androidx.room:room-compiler:2.6.1"
     implementation "androidx.room:room-ktx:2.6.1"

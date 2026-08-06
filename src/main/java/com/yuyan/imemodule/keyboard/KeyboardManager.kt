@@ -1,6 +1,7 @@
 package com.yuyan.imemodule.keyboard
 
 import com.yuyan.imemodule.application.Launcher
+import com.yuyan.imemodule.handwriting.HandwritingClient
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.keyboard.container.BaseContainer
 import com.yuyan.imemodule.keyboard.container.CandidatesContainer
@@ -26,6 +27,8 @@ class KeyboardManager {
     private var mKeyboardRootView: InputViewParent? = null
     private val keyboards = HashMap<KeyboardType, BaseContainer?>()
     private lateinit var mCurrentKeyboardName: KeyboardType
+    // 手写进程是否处于绑定状态。识别所需的 ML Kit 只在该进程加载，切离手写即解绑销毁
+    private var handwritingBound = false
     var currentContainer: BaseContainer? = null
         private set
 
@@ -45,10 +48,23 @@ class KeyboardManager {
      * 整棵输入视图树连同其持有的 Service Context 都无法回收。
      */
     fun release() {
+        syncHandwritingBinding(false)
         keyboards.clear()
         currentContainer = null
         mInputView = null
         mKeyboardRootView = null
+    }
+
+    /**
+     * 手写键盘进出时绑定与解绑 :hw 进程。
+     *
+     * 解绑会终止该进程，ML Kit 及其连带的 GMS、WorkManager 占用一并释放；
+     * 因此只要用户不在手写键盘上，这些开销就不存在于任何进程中。
+     */
+    private fun syncHandwritingBinding(needed: Boolean) {
+        if (needed == handwritingBound) return
+        handwritingBound = needed
+        if (needed) HandwritingClient.acquire(Launcher.instance.context) else HandwritingClient.release()
     }
 
     fun switchKeyboard(layout: Int = InputModeSwitcher.skbLayout) {
@@ -68,6 +84,8 @@ class KeyboardManager {
     fun switchKeyboard(keyboardName: KeyboardType) {
         val rootView = mKeyboardRootView ?: return
         val inputView = mInputView ?: return
+        // 先于容器创建，使 HandwritingContainer 初始化时绑定已在建立
+        syncHandwritingBinding(keyboardName == KeyboardType.HANDWRITING)
         var container = keyboards[keyboardName]
         if (container == null) {
             container = when (keyboardName) {
