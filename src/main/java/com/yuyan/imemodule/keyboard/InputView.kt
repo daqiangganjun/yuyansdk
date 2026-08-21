@@ -132,6 +132,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private val COMPOSING_EDIT_SCALE = 1.6f
     private val CARET_BLINK_INTERVAL = 500L
 
+    /** 上划清除时每批取用的字符数与批数上限，两者相乘即单次可清除的长度 */
+    private val CLEAR_BATCH_SIZE = 1000
+    private val MAX_CLEAR_BATCHES = 30
+
     /**
      * 拼音气泡在窗口中的位置。
      *
@@ -483,10 +487,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             }
             PopupMenuMode.Clear -> {
                 if (isAddPhrases) mAddPhrasesLayout.clearPhrasesContent()
-                else service.getTextBeforeCursor(1000).takeIf { it.isNotEmpty() }?.let {
-                    textBeforeCursors.push(it)
-                    service.deleteSurroundingText(1000)
-                }
+                else clearTextBeforeCursor()
             }
             PopupMenuMode.Revertl -> textBeforeCursors.popInReverseOrder()?.takeIf { it.isNotEmpty() }?.let { commitText(it) }
             PopupMenuMode.Enter -> commitText("\n")
@@ -621,26 +622,17 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             InputModeSwitcher.USER_KEYCODE_EMOJI -> onSettingsMenuClick(SkbMenuMode.Emojicon)
             in InputModeSwitcher.USER_KEYCODE_RETURN..InputModeSwitcher.USER_KEYCODE_LANG -> InputModeSwitcher.switchModeForUserKey(keyCode)
             in InputModeSwitcher.USER_KEYCODE_PASTE..InputModeSwitcher.USER_KEYCODE_CUT -> commitTextEditMenu(KeyPreset.textEditMenuPreset[keyCode])
-            InputModeSwitcher.USER_KEYCODE_MOVE_START -> service.setSelection(0, if (hasSelection) selEnd else 0)
-            InputModeSwitcher.USER_KEYCODE_MOVE_END -> {
-                if (hasSelection) {
-                    val start = selStart
-                    commitTextEditMenu(KeyPreset.textEditMenuPreset[InputModeSwitcher.USER_KEYCODE_SELECT_ALL])
-                    postDelayed(100) { service.setSelection(start, selEnd) }
-                } else {
-                    commitTextEditMenu(KeyPreset.textEditMenuPreset[InputModeSwitcher.USER_KEYCODE_SELECT_ALL])
-                    postDelayed(100) { service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)}
-                }
-            }
+            // 行首/行末交给应用按标准按键处理：它会把光标滚进可视区域，长文本才不会
+            // 停在看不见的地方。原先「先全选再发方向键」的做法会闪一下全选高亮
+            InputModeSwitcher.USER_KEYCODE_MOVE_START ->
+                service.sendCombinationKeyEvents(KeyEvent.KEYCODE_MOVE_HOME, shift = hasSelection)
+            InputModeSwitcher.USER_KEYCODE_MOVE_END ->
+                service.sendCombinationKeyEvents(KeyEvent.KEYCODE_MOVE_END, shift = hasSelection)
             InputModeSwitcher.USER_KEYCODE_SELECT_MODE -> {
                 hasSelection = !hasSelection
                 if (!hasSelection) service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
             }
-            InputModeSwitcher.USER_KEYCODE_SELECT_ALL -> {
-                hasSelectionAll = !hasSelectionAll
-                if (!hasSelectionAll) service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
-                else commitTextEditMenu(KeyPreset.textEditMenuPreset[keyCode])
-            }
+            InputModeSwitcher.USER_KEYCODE_SELECT_ALL -> selectAllText()
             else -> {
                 if(label.isNotEmpty()){
                     if (SymbolPreset.containsKey(label)) commitPairSymbol(label) else commitText(label)
@@ -983,6 +975,40 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }.getOrDefault(false)
     }
 
+    /**
+     * 删除光标之前的全部内容。
+     *
+     * 原先只取一次 1000 字符就删，光标前更长时一次删不完，看着就像「有时不生效」；
+     * 且删除长度写死为 1000，与实际取到的长度未必相符。改为分批删到取不出内容为止，
+     * 每批按实际长度删除，并逐批压入回退栈，撤销时逆序恢复。
+     */
+    private fun clearTextBeforeCursor() {
+        var batches = MAX_CLEAR_BATCHES
+        while (batches-- > 0) {
+            val before = service.getTextBeforeCursor(CLEAR_BATCH_SIZE)
+            if (before.isEmpty()) break
+            textBeforeCursors.push(before)
+            service.deleteSurroundingText(before.length)
+        }
+    }
+
+    /**
+     * 全选。
+     *
+     * 优先直接设选区而不走 performContextMenuAction：后者会让应用起一次选择态的操作流程，
+     * 紧接在粘贴之后触发时，部分应用会重建输入区、输入框随之失焦，表现为键盘被收起。
+     * 拿不到全文长度（如密码框拒绝提供上下文）时才回落到菜单动作。
+     *
+     * 此处不再做「按一下全选、再按一下取消」的切换：切换状态一旦与实际选区不同步，
+     * 就会出现要按两次才全选的情况；取消选择交给方向键即可。
+     */
+    private fun selectAllText() {
+        val length = service.getAllTextLength()
+        if (length > 0) service.setSelection(0, length)
+        else commitTextEditMenu(KeyPreset.textEditMenuPreset[InputModeSwitcher.USER_KEYCODE_SELECT_ALL])
+        hasSelectionAll = true
+    }
+
     private fun sendKeyEvent(keyCode: Int) {
         if (isAddPhrases) {
             mAddPhrasesLayout.sendKeyEvent(keyCode)
@@ -995,6 +1021,16 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             when (keyCode) {
                 KeyEvent.KEYCODE_ENTER -> service.sendEnterKeyEvent()
                 in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    // 有选区时方向键先把选区折叠掉：上、左归到选区首，下、右归到选区尾。
+                    // 与桌面编辑器一致，也使「全选后按上」和「全选后按左」结果相同——
+                    // 否则上下键在单行输入框里无处可去，会被当作焦点导航把输入框的焦点带走
+                    if (!hasSelection && selStart != selEnd) {
+                        val toHead = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        val target = if (toHead) minOf(selStart, selEnd) else maxOf(selStart, selEnd)
+                        service.setSelection(target, target)
+                        hasSelectionAll = false
+                        return
+                    }
                     // 光标已在首/末时不再下发方向键：越界的方向键会被应用当作焦点导航，
                     // 焦点跳到相邻控件后输入框失焦，表现为光标消失、甚至键盘被收起
                     if (isCursorAtEdge(keyCode)) return

@@ -102,7 +102,7 @@ class ClipBoardAdapter(context: Context, datas: MutableList<Clipboard>) :
         var ivTopTips: ImageView
         init {
             textView.setTextColor(textColor)
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, instance.candidateTextSize)
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, instance.clipboardTextSize)
             ivTopTips = view.findViewById(R.id.clipboard_adapter_top_tips)
         }
     }

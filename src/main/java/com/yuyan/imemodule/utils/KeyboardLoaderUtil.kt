@@ -283,11 +283,8 @@ class KeyboardLoaderUtil private constructor() {
                 keyBeans.addAll(editKeys)
                 rows.add(keyBeans)
                 keyBeans = LinkedList()
-                editKeys = createTextEditKeys(keys[3])
-                editKeys[0].widthF = 0.33f
-                editKeys[1].widthF = 0.33f
-                editKeys[2].widthF = 0.33f
-                keyBeans.addAll(editKeys)
+                // 末行沿用默认键宽，与上方三行的四列对齐；原先三等分是因为少一个键
+                keyBeans.addAll(createTextEditKeys(keys[3]))
                 rows.add(keyBeans)
             }
         }

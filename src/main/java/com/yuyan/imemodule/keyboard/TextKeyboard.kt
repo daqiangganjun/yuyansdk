@@ -220,9 +220,13 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             mPaint.color = textColor
             mPaint.setTypeface(Typeface.DEFAULT)
             mPaint.alpha = SMALL_LABEL_ALPHA
-            mPaint.textSize = mNormalKeyTextSizeSmall.toFloat()
+            // 字号取自与键高解耦的基准，而落点是按键高的比例：键盘调矮后按键变扁，
+            // 落点随之上移、字号却不变，就会顶到按键上沿。故按键高再压一道字号上限
+            mPaint.textSize = minOf(mNormalKeyTextSizeSmall.toFloat(), softKey.height() * SMALL_LABEL_MAX_HEIGHT_RATIO)
             val x = softKey.mLeft + (softKey.width() - mPaint.measureText(keyLabelSmall)) / 2.0f
-            val y = softKey.mTop + weightHeigth * 1.1f
+            // 基线同时不高于「按键上沿 + 一个字高」，保证字整个落在按键内
+            val minBaseline = softKey.mTop - mPaint.fontMetrics.ascent + weightHeigth * SMALL_LABEL_TOP_PADDING_RATIO
+            val y = maxOf(softKey.mTop + weightHeigth * 1.1f, minBaseline)
             canvas.drawText(keyLabelSmall, x, y, mPaint)
         }
         if (null != keyIcon) {
@@ -273,6 +277,10 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
         private const val FUNCTION_KEY_TEXT_SCALE = 0.75f
         /** 按键附带符号的透明度 */
         private const val SMALL_LABEL_ALPHA = 128
+        /** 按键附带符号的字号上限，相对按键高度；键盘调得很矮时由它接管 */
+        private const val SMALL_LABEL_MAX_HEIGHT_RATIO = 0.22f
+        /** 按键附带符号与按键上沿的最小间距，相对按键高度的四分之一 */
+        private const val SMALL_LABEL_TOP_PADDING_RATIO = 0.15f
 
         /**
          * 是否为功能键。功能键使用区别于字母键的底色，与主流输入法一致。

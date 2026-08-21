@@ -92,40 +92,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             R.string.chinese_association_date, "chinese_association_date_enable", true
         )
 
-        val titleFuzzy = category(R.string.fuzzy_pinyin_setting)
-
-        val fuzzyPinyinEnable = switch(
-            R.string.fuzzy_pinyin_enable, "fuzzy_pinyin_enable", true, R.string.fuzzy_pinyin_enable_summary
-        )
-
-        /**
-         * 各条内置模糊音规则的开关，键名与 [com.yuyan.inputmethod.util.FuzzyPinYinUtils] 中的预置表一一对应。
-         *
-         * 以映射持有是为了让规则表成为唯一的事实来源：增删规则只需改动那一处，
-         * 此处按同一份键名建项，不必两边各写一遍。
-         */
-        val fuzzyPinyinSwitches: Map<String, ManagedPreference.PBool> = listOf(
-            Triple("fuzzy_pinyin_zh_z", R.string.fuzzy_pinyin_zh_z, true),
-            Triple("fuzzy_pinyin_ch_c", R.string.fuzzy_pinyin_ch_c, true),
-            Triple("fuzzy_pinyin_sh_s", R.string.fuzzy_pinyin_sh_s, true),
-            Triple("fuzzy_pinyin_n_l", R.string.fuzzy_pinyin_n_l, false),
-            Triple("fuzzy_pinyin_r_l", R.string.fuzzy_pinyin_r_l, false),
-            Triple("fuzzy_pinyin_f_h", R.string.fuzzy_pinyin_f_h, false),
-            Triple("fuzzy_pinyin_k_g", R.string.fuzzy_pinyin_k_g, false),
-            Triple("fuzzy_pinyin_ang_an", R.string.fuzzy_pinyin_ang_an, false),
-            Triple("fuzzy_pinyin_eng_en", R.string.fuzzy_pinyin_eng_en, false),
-            Triple("fuzzy_pinyin_ing_in", R.string.fuzzy_pinyin_ing_in, false),
-            Triple("fuzzy_pinyin_iang_ian", R.string.fuzzy_pinyin_iang_ian, false),
-            Triple("fuzzy_pinyin_uang_uan", R.string.fuzzy_pinyin_uang_uan, false),
-        ).associate { (key, title, default) ->
-            key to switch(title, key, default) { fuzzyPinyinEnable.getValue() }
-        }
-
-        val fuzzyPinyinCustom = editText(
-            R.string.fuzzy_pinyin_custom, "fuzzy_pinyin_custom", "",
-            R.string.fuzzy_pinyin_custom_summary
-        ) { fuzzyPinyinEnable.getValue() }
-
         val titleEnglish = category(R.string.EnglishInput)
 
         //输出英文单词:英文补全
@@ -269,6 +235,48 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
     }
 
+    /**
+     * 模糊音。独立成页而非平铺在输入设置里——十来条规则加自定义项挤在一起会把其它设置淹没。
+     */
+    inner class FuzzyPinyin : ManagedPreferenceCategory(R.string.fuzzy_pinyin_setting, sharedPreferences) {
+
+        val fuzzyPinyinEnable = switch(
+            R.string.fuzzy_pinyin_enable, "fuzzy_pinyin_enable", true, R.string.fuzzy_pinyin_enable_summary
+        )
+
+        val titleRules = category(R.string.fuzzy_pinyin_rules)
+
+        /**
+         * 各条内置规则的开关，键名与 [com.yuyan.inputmethod.util.FuzzyPinYinUtils] 中的预置表一一对应。
+         *
+         * 以映射持有是为了让规则表成为唯一的事实来源：增删规则只需改动那一处，
+         * 此处按同一份键名建项，不必两边各写一遍。
+         */
+        val fuzzyPinyinSwitches: Map<String, ManagedPreference.PBool> = listOf(
+            Triple("fuzzy_pinyin_zh_z", R.string.fuzzy_pinyin_zh_z, true),
+            Triple("fuzzy_pinyin_ch_c", R.string.fuzzy_pinyin_ch_c, true),
+            Triple("fuzzy_pinyin_sh_s", R.string.fuzzy_pinyin_sh_s, true),
+            Triple("fuzzy_pinyin_n_l", R.string.fuzzy_pinyin_n_l, false),
+            Triple("fuzzy_pinyin_r_l", R.string.fuzzy_pinyin_r_l, false),
+            Triple("fuzzy_pinyin_f_h", R.string.fuzzy_pinyin_f_h, false),
+            Triple("fuzzy_pinyin_k_g", R.string.fuzzy_pinyin_k_g, false),
+            Triple("fuzzy_pinyin_ang_an", R.string.fuzzy_pinyin_ang_an, false),
+            Triple("fuzzy_pinyin_eng_en", R.string.fuzzy_pinyin_eng_en, false),
+            Triple("fuzzy_pinyin_ing_in", R.string.fuzzy_pinyin_ing_in, false),
+            Triple("fuzzy_pinyin_iang_ian", R.string.fuzzy_pinyin_iang_ian, false),
+            Triple("fuzzy_pinyin_uang_uan", R.string.fuzzy_pinyin_uang_uan, false),
+        ).associate { (key, title, default) ->
+            key to switch(title, key, default) { fuzzyPinyinEnable.getValue() }
+        }
+
+        val titleCustom = category(R.string.fuzzy_pinyin_custom_title)
+
+        val fuzzyPinyinCustom = editText(
+            R.string.fuzzy_pinyin_custom, "fuzzy_pinyin_custom", "",
+            R.string.fuzzy_pinyin_custom_summary
+        ) { fuzzyPinyinEnable.getValue() }
+    }
+
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {
         val clipboardListening = switch(R.string.clipboard_listening, "clipboard_enable", true)
         val clipboardHistoryLimit = int(
@@ -332,6 +340,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val voice = Voice().register()
     val handwriting = Handwriting().register()
     val input = Input().register()
+    val fuzzyPinyin = FuzzyPinyin().register()
     val clipboard = Clipboard().register()
     val keyboardSetting = KeyboardSetting().register()
     val other = Other().register()

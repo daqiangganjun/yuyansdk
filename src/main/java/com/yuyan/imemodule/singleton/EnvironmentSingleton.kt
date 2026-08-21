@@ -37,6 +37,7 @@ class EnvironmentSingleton private constructor() {
     var keyTextSize = 0 // 正常按键中文本的大小
     var keyTextSmallSize = 0 // 正常按键中文本的大小,小值
     var candidateTextSize = 0f // 候选词字体大小
+    var clipboardTextSize = 0f // 剪贴板、常用语的条目字体大小
     var composingTextSize = 0f // 候选词字体大小
     var isLandscape = false //键盘是否横屏
     var keyXMargin = 0 //键盘按键水平间距
@@ -82,6 +83,9 @@ class EnvironmentSingleton private constructor() {
         heightForCandidatesArea = (heightForcomposing * 2.9).toInt()
         composingTextSize = DevicesUtils.px2sp (heightForcomposing)
         candidateTextSize = DevicesUtils.px2sp (heightForCandidates)
+        // 候选词字号是按候选栏高度换算的，那是为单字短词好点而定；剪贴板与常用语
+        // 展示的是整段文本，同样字号会显得过大，按比例收一档
+        clipboardTextSize = candidateTextSize * CLIPBOARD_TEXT_SIZE_RATIO
         // 仅作为底栏容器的最小高度下限，实际高度由 FullDisplayKeyboardBar 的
         // 内边距与图标决定；此处放低下限，避免它反过来限制底栏变矮
         heightForFullDisplayBar = (heightForCandidatesArea * 0.25f).toInt()
@@ -93,7 +97,7 @@ class EnvironmentSingleton private constructor() {
         val fontBaseHeight = screenHeightVertical *
             (if (isLandscape && !keyboardModeFloat) FONT_BASE_RATIO_LANDSCAPE else FONT_BASE_RATIO)
         keyTextSize = (fontBaseHeight * 0.06f * keyboardFontSizeRatio).toInt()
-        keyTextSmallSize = (fontBaseHeight * 0.04f * keyboardFontSizeRatio).toInt()
+        keyTextSmallSize = (fontBaseHeight * 0.035f * keyboardFontSizeRatio).toInt()
         keyXMargin = (prefs.keyXMargin.getValue() / 1000f * skbWidth).toInt()
         keyYMargin = (prefs.keyYMargin.getValue() / 1000f * skbHeight).toInt()
         inputAreaHeight = skbHeight + heightForCandidatesArea
@@ -133,6 +137,9 @@ class EnvironmentSingleton private constructor() {
         /** 字号基准所用的键盘高度比例，与用户可调的 keyboardHeightRatio 解耦 */
         private const val FONT_BASE_RATIO = 0.3f
         private const val FONT_BASE_RATIO_LANDSCAPE = 0.5f
+
+        /** 剪贴板、常用语条目字号相对候选词字号的比例 */
+        private const val CLIPBOARD_TEXT_SIZE_RATIO = 0.7f
 
         private var mInstance: EnvironmentSingleton? = null
         @JvmStatic

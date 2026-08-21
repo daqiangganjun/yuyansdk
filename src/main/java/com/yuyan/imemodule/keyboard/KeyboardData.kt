@@ -127,16 +127,16 @@ object KeyboardData {
             arrayOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_RIGHT, InputModeSwitcher.USER_KEYCODE_SELECT_ALL),
             arrayOf(InputModeSwitcher.USER_KEYCODE_SELECT_MODE, InputModeSwitcher.USER_KEYCODE_COPY),
             arrayOf(KeyEvent.KEYCODE_DPAD_DOWN, InputModeSwitcher.USER_KEYCODE_PASTE),
-            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, KeyEvent.KEYCODE_DEL)),
+            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, InputModeSwitcher.USER_KEYCODE_CUT, KeyEvent.KEYCODE_DEL)),
         SkbStyleMode.Samsung to arrayListOf(
             arrayOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_RIGHT, InputModeSwitcher.USER_KEYCODE_SELECT_ALL),
             arrayOf(InputModeSwitcher.USER_KEYCODE_SELECT_MODE, InputModeSwitcher.USER_KEYCODE_COPY),
             arrayOf(KeyEvent.KEYCODE_DPAD_DOWN, InputModeSwitcher.USER_KEYCODE_PASTE),
-            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, KeyEvent.KEYCODE_DEL)),
+            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, InputModeSwitcher.USER_KEYCODE_CUT, KeyEvent.KEYCODE_DEL)),
         SkbStyleMode.Yuyan to arrayListOf(
             arrayOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_RIGHT, InputModeSwitcher.USER_KEYCODE_SELECT_ALL),
             arrayOf(InputModeSwitcher.USER_KEYCODE_SELECT_MODE, InputModeSwitcher.USER_KEYCODE_COPY),
             arrayOf(KeyEvent.KEYCODE_DPAD_DOWN, InputModeSwitcher.USER_KEYCODE_PASTE),
-            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, KeyEvent.KEYCODE_DEL)),
+            arrayOf(InputModeSwitcher.USER_KEYCODE_MOVE_START, InputModeSwitcher.USER_KEYCODE_MOVE_END, InputModeSwitcher.USER_KEYCODE_CUT, KeyEvent.KEYCODE_DEL)),
     )
 }

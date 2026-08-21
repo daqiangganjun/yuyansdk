@@ -54,7 +54,15 @@
     <fragment
         android:id="@+id/inputSettingsFragment"
         android:name="com.yuyan.imemodule.ui.fragment.InputSettingsFragment"
-        android:label="@string/setting_ime_input" />
+        android:label="@string/setting_ime_input">
+        <action
+            android:id="@+id/action_inputSettingsFragment_to_fuzzyPinyinFragment"
+            app:destination="@id/fuzzyPinyinFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/fuzzyPinyinFragment"
+        android:name="com.yuyan.imemodule.ui.fragment.FuzzyPinyinFragment"
+        android:label="@string/fuzzy_pinyin_setting" />
     <fragment
         android:id="@+id/handwritingSettingsFragment"
         android:name="com.yuyan.imemodule.ui.fragment.HandwritingSettingsFragment"

@@ -36,15 +36,15 @@ object FuzzyPinYinUtils {
     )
 
     val isEnabled: Boolean
-        get() = AppPrefs.getInstance().input.fuzzyPinyinEnable.getValue()
+        get() = AppPrefs.getInstance().fuzzyPinyin.fuzzyPinyinEnable.getValue()
 
     private fun activeRules(): List<Rule> {
-        val input = AppPrefs.getInstance().input
+        val prefs = AppPrefs.getInstance().fuzzyPinyin
         val rules = ArrayList<Rule>(PRESET.size + 4)
         PRESET.forEach { (key, rule) ->
-            if (input.fuzzyPinyinSwitches[key]?.getValue() == true) rules.add(rule)
+            if (prefs.fuzzyPinyinSwitches[key]?.getValue() == true) rules.add(rule)
         }
-        parseCustom(input.fuzzyPinyinCustom.getValue(), rules)
+        parseCustom(prefs.fuzzyPinyinCustom.getValue(), rules)
         return rules
     }
 

@@ -1,14 +1,30 @@
 package com.yuyan.imemodule.ui.fragment
 
+import androidx.navigation.fragment.findNavController
+import androidx.preference.PreferenceScreen
+import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.DoublePinyinSchemaMode
 import com.yuyan.imemodule.ui.fragment.base.ManagedPreferenceFragment
+import com.yuyan.imemodule.utils.addPreference
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import com.yuyan.inputmethod.core.Kernel
 
 class InputSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().input){
+
+    /**
+     * 模糊音单列一页。十来条规则加自定义项若平铺在此，会把其它输入设置淹没。
+     */
+    override fun onPreferenceUiCreated(screen: PreferenceScreen) {
+        screen.addPreference(
+            R.string.fuzzy_pinyin_setting,
+            getString(R.string.fuzzy_pinyin_entry_summary)
+        ) {
+            findNavController().navigate(R.id.action_inputSettingsFragment_to_fuzzyPinyinFragment)
+        }
+    }
 
     private val chineseFanTi = AppPrefs.getInstance().input.chineseFanTi
     private val emojiInput = AppPrefs.getInstance().input.emojiInput

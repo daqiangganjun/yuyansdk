@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import com.yuyan.imemodule.candidate.CandidateView
 import com.yuyan.imemodule.data.emojicon.YuyanEmojiCompat
@@ -349,6 +350,16 @@ class ImeService : InputMethodService() {
     fun setSelection(start: Int, end: Int) {
         currentInputConnection.setSelection(start, end)
     }
+
+    /**
+     * 输入框中全部文本的长度，取不到时为 -1。
+     *
+     * 用于直接设选区实现全选，绕开会惊动应用选择态的 performContextMenuAction。
+     * 密码框一类会拒绝提供上下文，此时返回 -1 由调用方回落。
+     */
+    fun getAllTextLength(): Int = runCatching {
+        currentInputConnection.getExtractedText(ExtractedTextRequest(), 0)?.text?.length ?: -1
+    }.getOrDefault(-1)
 
     fun handleHardwareKeyboard(newConfig: Configuration? = null) {
         val hardwareKeyboard = if (getInstance().keyboardSetting.showVirtualKeyboardOnPhysicalKeyboard.getValue()) false

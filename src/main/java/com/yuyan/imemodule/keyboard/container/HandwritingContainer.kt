@@ -44,24 +44,15 @@ class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseC
     private var mModelTipView: HandwritingModelTipView? = null
     // 键盘界面上符号(T9左侧、手写右侧)
     private var mRVRightSymbols: SwipeRecyclerView = inflate(getContext(), R.layout.sdk_view_rv_prefix, null) as SwipeRecyclerView
-    private val mLlAddSymbol : LinearLayout = LinearLayout(context).apply{
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT).apply { margin = (dp(20)) }
-        gravity = Gravity.CENTER
-    }
+    private val mLlAddSymbol : LinearLayout
+    // 符号栏可用高度，用于把符号与「符号设置」按钮均分排布
+    private var mPrefixAreaHeight = 0
     init {
-        val ivAddSymbol = ImageView(context).apply {
-            setPadding(dp(5))
-            setImageResource(R.drawable.ic_menu_setting)
-            drawable.setTint(ThemeManager.activeTheme.keyTextColor)
-        }
-        ivAddSymbol.setOnClickListener { _:View ->
+        mLlAddSymbol = SideSymbolBar.createSettingsEntry(context!!, tint = true) {
             val arguments = Bundle()
             arguments.putInt("type", 0)
-            AppUtil.launchSettingsToPrefix(context!!, arguments)
+            AppUtil.launchSettingsToPrefix(context, arguments)
         }
-        mLlAddSymbol.addView(ivAddSymbol)
         mSideSymbolsPinyin = DataBaseKT.instance.sideSymbolDao().getAllSideSymbolPinyin()
     }
 
@@ -125,8 +116,11 @@ class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseC
             setMargins(softKeyboard.keyXMargin, softKeySymbolHolder.mTop + softKeyboard.keyYMargin,
                     softKeyboard.keyXMargin, EnvironmentSingleton.instance.skbHeight - softKeySymbolHolder.mBottom + softKeyboard.keyYMargin)
         })
+        mPrefixAreaHeight = softKeySymbolHolder.height() - 2 * softKeyboard.keyYMargin
         val strs = mSideSymbolsPinyin.map { it.symbolKey }.toTypedArray()
-        val adapter = PrefixAdapter(context, strs)
+        val evenHeight = SideSymbolBar.evenItemHeight(mPrefixAreaHeight, strs.size, true)
+        SideSymbolBar.applyFooterHeight(mLlAddSymbol, evenHeight)
+        val adapter = PrefixAdapter(context, strs, evenHeight)
         mRVRightSymbols.setAdapter(null)
         mRVRightSymbols.setOnItemClickListener{ _: View?, position: Int ->
             val symbol = mSideSymbolsPinyin.map { it.symbolValue }[position]
