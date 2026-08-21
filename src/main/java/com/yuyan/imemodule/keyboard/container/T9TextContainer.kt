@@ -27,7 +27,6 @@ import com.yuyan.imemodule.keyboard.TextKeyboard
 import com.yuyan.imemodule.keyboard.HandwritingKeyboard
 import com.yuyan.imemodule.libs.recyclerview.SwipeRecyclerView
 import splitties.dimensions.dp
-import splitties.views.dsl.core.margin
 
 /**
  * 九宫格键盘容器
@@ -47,14 +46,18 @@ open class T9TextContainer(context: Context?, inputView: InputView, skbValue: In
     private val mRVLeftPrefix : SwipeRecyclerView = inflate(getContext(), R.layout.sdk_view_rv_prefix, null) as SwipeRecyclerView
     private val mLlAddSymbol : LinearLayout = LinearLayout(context).apply{
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT).apply { margin = (dp(20)) }
+            LinearLayout.LayoutParams.WRAP_CONTENT)
         gravity = Gravity.CENTER
     }
+    // 符号栏可用高度，用于把符号与「符号设置」按钮均分排布
+    private var mPrefixAreaHeight = 0
 
     init {
         mSkbValue = skbValue
         val ivAddSymbol = ImageView(context).apply {
-            setPadding(dp(5))
+            // 图标固有尺寸 35dp，原先靠外边距压着才不显眼；均分栏高后须显式收窄，
+            // 否则齿轮比旁边的符号大出一圈
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
             setImageResource(R.drawable.ic_menu_setting)
             drawable.setTint(ThemeManager.activeTheme.keyTextColor)
         }
@@ -95,6 +98,7 @@ open class T9TextContainer(context: Context?, inputView: InputView, skbValue: In
             softKeyboard.keyXMargin,
             EnvironmentSingleton.instance.skbHeight - softKeySymbolHolder.mBottom + softKeyboard.keyYMargin
         )
+        mPrefixAreaHeight = softKeySymbolHolder.height() - 2 * softKeyboard.keyYMargin
         val prefixLayoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         mRVLeftPrefix.setLayoutManager(prefixLayoutManager)
         if (mRVLeftPrefix.parent != null) {
@@ -103,6 +107,19 @@ open class T9TextContainer(context: Context?, inputView: InputView, skbValue: In
         }
         addView(mRVLeftPrefix, prefixLayoutParams)
         updateSymbolListView()
+    }
+
+    /**
+     * 计算符号栏各项均分后的高度。
+     *
+     * 项数少时（数字键盘常只保留两三个符号）按内容高度排布会在符号与「符号设置」之间、
+     * 以及栏底留下大片空白；均分后正好铺满整栏。项数多到均分高度不足以点按时退回自适应并滚动。
+     */
+    private fun evenItemHeight(itemCount: Int, withFooter: Boolean): Int {
+        val total = itemCount + if (withFooter) 1 else 0
+        if (total <= 0 || mPrefixAreaHeight <= 0) return 0
+        val height = mPrefixAreaHeight / total
+        return if (height < dp(36)) 0 else height
     }
 
     //更新符号显示,九宫格左侧符号栏
@@ -119,7 +136,12 @@ open class T9TextContainer(context: Context?, inputView: InputView, skbValue: In
                 mRVLeftPrefix.removeFooterView(mLlAddSymbol)
             }
         }
-        val adapter = PrefixAdapter(context, prefixs)
+        val evenHeight = evenItemHeight(prefixs.size, !isPrefixs)
+        mLlAddSymbol.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            if (evenHeight > 0) evenHeight else LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        val adapter = PrefixAdapter(context, prefixs, evenHeight)
         mRVLeftPrefix.setAdapter(null)
         mRVLeftPrefix.setOnItemClickListener{ _: View?, position: Int ->
             if (!isPrefixs) {

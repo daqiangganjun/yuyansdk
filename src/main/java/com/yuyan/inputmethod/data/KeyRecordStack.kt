@@ -99,6 +99,28 @@ class KeyRecordStack {
         return keyRecords.getOrNull(index) as? InputKey.PinyinKey
     }
 
+    /**
+     * 按给定的按键序列重建按键栈。
+     *
+     * 编辑拼音、选中模糊音候选时引擎的输入串被整体换过，按键栈须一并对齐，
+     * 否则随后的退格会按原来的序列还原，与引擎实际状态对不上。
+     *
+     * 大小写的分工与 [pushKey] 一致：九键与乱序方案下按的是大写字母，记为 [InputKey.T9Key]，
+     * 拼音选择栏正是按它来匹配按键序列的，记错类型会让选择栏点击失效。
+     */
+    fun resetToPlainKeys(input: String) {
+        keyRecords.clear()
+        input.forEach { ch ->
+            keyRecords.add(
+                when {
+                    ch == '\'' -> InputKey.Apostrophe()
+                    ch in 'A'..'Z' -> InputKey.T9Key(ch)
+                    else -> InputKey.QwertKey(ch)
+                }
+            )
+        }
+    }
+
     fun pushCandidateSelectAction() {
         if (keyRecords.lastOrNull() == InputKey.SelectPinyinAction) {
             keyRecords.removeLastOrNull()

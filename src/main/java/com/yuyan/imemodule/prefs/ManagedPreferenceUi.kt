@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
+import androidx.preference.Preference.SummaryProvider
 import androidx.preference.PreferenceCategory
 import com.yuyan.imemodule.view.preference.DialogSeekBarPreference
 import com.yuyan.imemodule.view.preference.EditTextIntPreference
@@ -74,6 +75,30 @@ abstract class ManagedPreferenceUi<T : Preference>(
             setTitle(this@StringList.title)
             entries = this@StringList.entryLabels.map { context.getString(it) }.toTypedArray()
             setDialogTitle(this@StringList.title)
+        }
+    }
+
+    class EditTextString(
+        @StringRes
+        val title: Int,
+        key: String,
+        val defaultValue: String,
+        @StringRes
+        val summary: Int? = null,
+        enableUiOn: (() -> Boolean)? = null
+    ) : ManagedPreferenceUi<EditTextPreference>(key, enableUiOn) {
+        override fun createUi(context: Context) = EditTextPreference(context).apply {
+            key = this@EditTextString.key
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+            setDefaultValue(this@EditTextString.defaultValue)
+            setTitle(this@EditTextString.title)
+            setDialogTitle(this@EditTextString.title)
+            // 留空时用说明文字占位，否则条目只剩标题，看不出当前配置
+            val hint = this@EditTextString.summary?.let { context.getString(it) }
+            summaryProvider = SummaryProvider<EditTextPreference> { pref ->
+                pref.text?.takeIf { it.isNotBlank() } ?: hint
+            }
         }
     }
 

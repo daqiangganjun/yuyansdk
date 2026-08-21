@@ -17,6 +17,7 @@ import com.yuyan.imemodule.prefs.behavior.FullDisplayKeyMode
 import com.yuyan.imemodule.prefs.behavior.HalfWidthSymbolsMode
 import com.yuyan.imemodule.prefs.behavior.KeyboardOneHandedMod
 import com.yuyan.imemodule.utils.DevicesUtils
+import com.yuyan.imemodule.view.preference.ManagedPreference
 
 
 class AppPrefs(private val sharedPreferences: SharedPreferences) {
@@ -90,6 +91,40 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val chinesePredictionDate = switch(
             R.string.chinese_association_date, "chinese_association_date_enable", true
         )
+
+        val titleFuzzy = category(R.string.fuzzy_pinyin_setting)
+
+        val fuzzyPinyinEnable = switch(
+            R.string.fuzzy_pinyin_enable, "fuzzy_pinyin_enable", true, R.string.fuzzy_pinyin_enable_summary
+        )
+
+        /**
+         * 各条内置模糊音规则的开关，键名与 [com.yuyan.inputmethod.util.FuzzyPinYinUtils] 中的预置表一一对应。
+         *
+         * 以映射持有是为了让规则表成为唯一的事实来源：增删规则只需改动那一处，
+         * 此处按同一份键名建项，不必两边各写一遍。
+         */
+        val fuzzyPinyinSwitches: Map<String, ManagedPreference.PBool> = listOf(
+            Triple("fuzzy_pinyin_zh_z", R.string.fuzzy_pinyin_zh_z, true),
+            Triple("fuzzy_pinyin_ch_c", R.string.fuzzy_pinyin_ch_c, true),
+            Triple("fuzzy_pinyin_sh_s", R.string.fuzzy_pinyin_sh_s, true),
+            Triple("fuzzy_pinyin_n_l", R.string.fuzzy_pinyin_n_l, false),
+            Triple("fuzzy_pinyin_r_l", R.string.fuzzy_pinyin_r_l, false),
+            Triple("fuzzy_pinyin_f_h", R.string.fuzzy_pinyin_f_h, false),
+            Triple("fuzzy_pinyin_k_g", R.string.fuzzy_pinyin_k_g, false),
+            Triple("fuzzy_pinyin_ang_an", R.string.fuzzy_pinyin_ang_an, false),
+            Triple("fuzzy_pinyin_eng_en", R.string.fuzzy_pinyin_eng_en, false),
+            Triple("fuzzy_pinyin_ing_in", R.string.fuzzy_pinyin_ing_in, false),
+            Triple("fuzzy_pinyin_iang_ian", R.string.fuzzy_pinyin_iang_ian, false),
+            Triple("fuzzy_pinyin_uang_uan", R.string.fuzzy_pinyin_uang_uan, false),
+        ).associate { (key, title, default) ->
+            key to switch(title, key, default) { fuzzyPinyinEnable.getValue() }
+        }
+
+        val fuzzyPinyinCustom = editText(
+            R.string.fuzzy_pinyin_custom, "fuzzy_pinyin_custom", "",
+            R.string.fuzzy_pinyin_custom_summary
+        ) { fuzzyPinyinEnable.getValue() }
 
         val titleEnglish = category(R.string.EnglishInput)
 

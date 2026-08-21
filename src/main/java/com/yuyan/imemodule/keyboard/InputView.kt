@@ -5,6 +5,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.Rect
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.util.TypedValue
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -108,7 +113,40 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             includeFontPadding = false
             maxLines = 1
             setPadding(dp(8), dp(2), dp(8), dp(2))
+            attachComposingCaretTouch(this)
         }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachComposingCaretTouch(bubble: TextView) {
+        bubble.setOnTouchListener { view, event ->
+            if (event.action == MotionEvent.ACTION_UP) moveComposingCaret(view as TextView, event.x)
+            true
+        }
+    }
+
+    /** 拼音编辑时标记插入点的字符，宽度窄且各字体普遍支持 */
+    private val composingCaretMark = "|"
+
+    /** 编辑态下气泡的放大倍数，以及插入点的明灭间隔 */
+    private val COMPOSING_EDIT_SCALE = 1.6f
+    private val CARET_BLINK_INTERVAL = 500L
+
+    /**
+     * 拼音气泡在窗口中的位置。
+     *
+     * 气泡浮在键盘上方，落在 contentTopInsets 之外，默认不属于输入法窗口的可触摸区域——
+     * 触摸会径直穿到宿主应用上。[com.yuyan.imemodule.service.ImeService.onComputeInsets]
+     * 据此把这块补进去，点击气泡才能生效。
+     *
+     * @return 气泡当前是否可见
+     */
+    fun composingBubbleBounds(out: Rect): Boolean {
+        if (composingBubble.visibility != VISIBLE || composingBubble.width == 0) return false
+        val location = IntArray(2)
+        composingBubble.getLocationInWindow(location)
+        out.set(location[0], location[1], location[0] + composingBubble.width, location[1] + composingBubble.height)
+        return true
     }
 
 
@@ -320,11 +358,78 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         // 手写组合态下气泡改示识别字的读音，与拼音输入时展示编码串的位置一致
         val text = handwritingReading ?: DecodingInfo.composingStrForDisplay
         if (text.isEmpty()) {
+            setComposingBubbleEditing(false)
             if (composingBubble.visibility != GONE) composingBubble.visibility = GONE
             return
         }
-        composingBubble.text = text
+        setComposingBubbleEditing(handwritingReading == null && DecodingInfo.caretInComposition >= 0)
+        renderComposingBubbleText()
         if (composingBubble.visibility != VISIBLE) composingBubble.visibility = VISIBLE
+    }
+
+    /**
+     * 进出编辑态：气泡放大并让插入点闪动。
+     *
+     * 常规字号下拼音只有几毫米高，要点准某个字符（尤其是回到常规输入所需的串尾）相当吃力；
+     * 闪动则是让「此处可插入」一眼可辨，与文本框的光标一致。
+     */
+    private fun setComposingBubbleEditing(editing: Boolean) {
+        if (editing == composingBubbleEditing) return
+        composingBubbleEditing = editing
+        val size = EnvironmentSingleton.instance.composingTextSize
+        composingBubble.setTextSize(TypedValue.COMPLEX_UNIT_DIP, if (editing) size * COMPOSING_EDIT_SCALE else size)
+        removeCallbacks(caretBlinkTask)
+        caretBlinkOn = true
+        if (editing) postDelayed(caretBlinkTask, CARET_BLINK_INTERVAL)
+    }
+
+    private fun renderComposingBubbleText() {
+        val text = handwritingReading ?: DecodingInfo.composingStrForDisplay
+        val caret = if (handwritingReading != null) -1 else DecodingInfo.caretInComposition
+        if (caret !in 0..text.length) {
+            composingBubble.text = text
+            return
+        }
+        // 灭时把光标染成透明而非删掉，字符位仍占着，编码不会随闪动左右跳动
+        composingBubble.text = SpannableStringBuilder(text).insert(caret, composingCaretMark).apply {
+            if (!caretBlinkOn) setSpan(
+                ForegroundColorSpan(Color.TRANSPARENT), caret, caret + composingCaretMark.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
+    private var composingBubbleEditing = false
+    private var caretBlinkOn = true
+    private val caretBlinkTask = object : Runnable {
+        override fun run() {
+            caretBlinkOn = !caretBlinkOn
+            renderComposingBubbleText()
+            postDelayed(this, CARET_BLINK_INTERVAL)
+        }
+    }
+
+    /**
+     * 点击拼音气泡，把插入点移到点中的字符处。
+     *
+     * 此后输入的字母插在该处并由引擎重新分词，输入分词符可强制断开；点击串尾则回到
+     * 常规输入状态。候选始终覆盖完整编码，与插入点位置无关。
+     * 手写读音只是提示，不参与编辑。
+     */
+    private fun moveComposingCaret(bubble: TextView, touchX: Float) {
+        if (handwritingReading != null) return
+        val layout = bubble.layout ?: return
+        val caret = DecodingInfo.caretInComposition
+        var offset = layout.getOffsetForHorizontal(0, touchX - bubble.paddingLeft)
+        // 光标本身也占一个字符位，点在它右侧时要把这一位扣回去
+        if (caret in 0..<offset) offset -= composingCaretMark.length
+        if (offset == caret) return
+        // 引擎侧的插入点没动，候选仍覆盖完整编码，故只需重画气泡上的插入点标记
+        if (DecodingInfo.moveCaretTo(offset)) {
+            DevicesUtils.tryPlayKeyDown()
+            DevicesUtils.tryVibrate(this)
+            updateComposingBubble()
+        }
     }
 
     private val floatCornerRadius: Float by lazy { DevicesUtils.dip2px(16).toFloat() }
@@ -625,6 +730,24 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             resetToIdleState()
         }
         if (InputModeSwitcher.isEnglish) setComposingText(DecodingInfo.composingStrForCommit)
+        scheduleFuzzyCandidates()
+    }
+
+    /**
+     * 模糊音补查任务。
+     *
+     * 每条变体串都要在引擎里重放一遍按键，代价远高于一次普通按键，逐键去查会拖慢连打；
+     * 改为等输入停顿后补一次，候选栏在用户开始挑词时才增补，不打断输入节奏。
+     */
+    private val fuzzyCandidatesTask = Runnable { DecodingInfo.appendFuzzyCandidates() }
+
+    /** 判定「输入停顿」的时长，短于常人两次击键的间隔，连打时不会触发 */
+    private val fuzzyCandidatesDelay = 180L
+
+    private fun scheduleFuzzyCandidates() {
+        removeCallbacks(fuzzyCandidatesTask)
+        if (!InputModeSwitcher.isChinese || DecodingInfo.isAssociate || DecodingInfo.isCandidatesEmpty) return
+        postDelayed(fuzzyCandidatesTask, fuzzyCandidatesDelay)
     }
 
     /**
@@ -746,6 +869,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     private fun resetCandidateWindow() {
+        removeCallbacks(fuzzyCandidatesTask)
         DecodingInfo.reset()
         (KeyboardManager.instance.currentContainer as? T9TextContainer)?.updateSymbolListView()
     }

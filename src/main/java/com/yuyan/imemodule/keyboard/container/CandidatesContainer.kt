@@ -43,7 +43,6 @@ import splitties.views.dsl.constraintlayout.lParams
 import splitties.views.dsl.constraintlayout.leftOfParent
 import splitties.views.dsl.constraintlayout.rightOfParent
 import splitties.views.dsl.core.add
-import splitties.views.dsl.core.margin
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
 
@@ -61,13 +60,16 @@ class CandidatesContainer(context: Context, inputView: InputView) : BaseContaine
     private var mRVLeftPrefix = inflate(getContext(), R.layout.sdk_view_rv_prefix, null) as SwipeRecyclerView
     private var isLoadingMore = false // 正在加载更多
     private val mLlAddSymbol : LinearLayout = LinearLayout(context).apply{
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { margin = (dp(20)) }
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         gravity = Gravity.CENTER
     }
+    // 符号栏可用高度，用于把符号与「符号设置」按钮均分排布
+    private var mPrefixAreaHeight = 0
     init {
         initView(context)
         val ivAddSymbol = ImageView(context).apply {
-            setPadding(dp(5))
+            // 图标固有尺寸 35dp，均分栏高后须显式收窄，否则齿轮比旁边的符号大出一圈
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
             setImageResource(R.drawable.ic_menu_setting)
         }
         ivAddSymbol.setOnClickListener { _:View ->
@@ -85,6 +87,7 @@ class CandidatesContainer(context: Context, inputView: InputView) : BaseContaine
         mRVSymbolsView.setItemAnimator(null)
         mRVLeftPrefix.setLayoutManager(LinearLayoutManager(getContext(), LinearLayoutManager.VERTICAL, false))
         val skbHeightMargins = (instance.skbHeight * 0.01).toInt()
+        mPrefixAreaHeight = instance.skbHeight - 2 * skbHeightMargins
         add(mRVLeftPrefix, lParams(width = (instance.skbWidth * 0.18).toInt(), height = matchParent).apply {
             setMargins(0, skbHeightMargins, 0, skbHeightMargins)
             leftOfParent(0)
@@ -191,6 +194,14 @@ class CandidatesContainer(context: Context, inputView: InputView) : BaseContaine
         }
     }
 
+    /** 符号栏各项均分后的高度，项数多到均分高度不足以点按时退回自适应并滚动 */
+    private fun evenItemHeight(itemCount: Int, withFooter: Boolean): Int {
+        val total = itemCount + if (withFooter) 1 else 0
+        if (total <= 0 || mPrefixAreaHeight <= 0) return 0
+        val height = mPrefixAreaHeight / total
+        return if (height < dp(36)) 0 else height
+    }
+
     //更新左侧拼音显示
     private fun updatePrefixsView() {
         var prefixs =DecodingInfo.prefixs
@@ -201,6 +212,11 @@ class CandidatesContainer(context: Context, inputView: InputView) : BaseContaine
         } else{
             if (mRVLeftPrefix.footerCount > 0) mRVLeftPrefix.removeFooterView(mLlAddSymbol)
         }
+        val evenHeight = evenItemHeight(prefixs.size, !isPrefixs)
+        mLlAddSymbol.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            if (evenHeight > 0) evenHeight else LinearLayout.LayoutParams.WRAP_CONTENT
+        )
         mRVLeftPrefix.setAdapter(null)
         mRVLeftPrefix.setOnItemClickListener{ _: View?, position: Int ->
             if (isPrefixs) {
@@ -212,6 +228,6 @@ class CandidatesContainer(context: Context, inputView: InputView) : BaseContaine
                 inputView.responseKeyEvent(softKey)
             }
         }
-        mRVLeftPrefix.setAdapter(PrefixAdapter(context, prefixs))
+        mRVLeftPrefix.setAdapter(PrefixAdapter(context, prefixs, evenHeight))
     }
 }

@@ -1,6 +1,8 @@
 package com.yuyan.imemodule.service
 
 import android.content.res.Configuration
+import android.graphics.Rect
+import android.graphics.Region
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.text.InputType
@@ -172,6 +174,13 @@ class ImeService : InputMethodService() {
     override fun onEvaluateFullscreenMode(): Boolean = false //修复横屏之后输入框遮挡问题
 
 
+    // 复用同一个矩形，onComputeInsets 每帧都会被调用
+    private val composingBubbleRect = Rect()
+
+    private fun unionComposingBubble(region: Region, inputView: InputView) {
+        if (inputView.composingBubbleBounds(composingBubbleRect)) region.union(composingBubbleRect)
+    }
+
     override fun onComputeInsets(outInsets: Insets) {
         val inputView = mInputView
         val candidateView = mCandidateView
@@ -185,11 +194,22 @@ class ImeService : InputMethodService() {
                     visibleTopInsets = EnvironmentSingleton.instance.mScreenHeight
                     touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                     touchableRegion.set(x, y, x + inputView.mSkbRoot.width, y + inputView.mSkbRoot.height)
+                    unionComposingBubble(touchableRegion, inputView)
                 } else {
                     contentTopInsets = y
-                    touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
-                    touchableRegion.setEmpty()
                     visibleTopInsets = y
+                    // 拼音气泡浮在键盘上方，不在 contentTopInsets 之内；要让它可点，
+                    // 就得改用显式区域，把键盘原有的可触摸范围与气泡合并。区域下边与右边
+                    // 取屏幕长边，超出窗口的部分由系统裁掉，比按视图尺寸推算更不易算错
+                    if (inputView != null && inputView.composingBubbleBounds(composingBubbleRect)) {
+                        val extent = maxOf(EnvironmentSingleton.instance.mScreenWidth, EnvironmentSingleton.instance.mScreenHeight)
+                        touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                        touchableRegion.set(0, y, extent, extent)
+                        touchableRegion.union(composingBubbleRect)
+                    } else {
+                        touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+                        touchableRegion.setEmpty()
+                    }
                 }
             } else {
                 contentTopInsets = EnvironmentSingleton.instance.mScreenHeight

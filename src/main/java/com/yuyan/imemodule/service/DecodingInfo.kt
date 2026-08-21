@@ -82,6 +82,31 @@ object DecodingInfo {
     val composingStrForDisplay: String   //获取显示的拼音字符串/
         get() = Kernel.wordsShowPinyin
 
+    val caretInComposition: Int   // 拼音串中插入点的字符下标，-1 表示在末尾
+        get() = Kernel.caretInComposition
+
+    /**
+     * 把插入点移到拼音串的指定位置，供点击拼音气泡进入编辑用。
+     *
+     * 引擎侧不受影响，候选仍覆盖完整编码，故无须重查——只有气泡上的插入点标记需要刷新。
+     * @return 位置是否发生变化
+     */
+    fun moveCaretTo(position: Int): Boolean {
+        if (isAssociate || isCandidatesEmpty) return false
+        return Kernel.moveCaretTo(position)
+    }
+
+    /**
+     * 输入停顿后以模糊音变体补充候选。
+     * @return 候选列表是否有补充
+     */
+    fun appendFuzzyCandidates(): Boolean {
+        if (isAssociate || isEngineFinish || isCandidatesEmpty) return false
+        if (!Kernel.appendFuzzyCandidates()) return false
+        candidatesLiveData.value = Kernel.candidates
+        return true
+    }
+
     val composingStrForCommit: String   // 获取输入的拼音字符串
         get() = Kernel.wordsShowPinyin.replace("'", "").ifEmpty { getCandidate(0)?.text?:""}
 

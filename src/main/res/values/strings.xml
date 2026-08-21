@@ -28,6 +28,23 @@
     <string name="setting_jian_fan">繁体输入</string>
     <string name="chinese_association">中文联想</string>
     <string name="chinese_association_date">中文联想显示时间</string>
+    <string name="fuzzy_pinyin_setting">模糊音</string>
+    <string name="fuzzy_pinyin_enable">启用模糊音</string>
+    <string name="fuzzy_pinyin_enable_summary">按下列规则改写拼音再查一次，把等价读音的字词并入候选。仅全键拼音生效，九键与双拼的按键本身已把这些音归并到一处</string>
+    <string name="fuzzy_pinyin_zh_z">zh = z</string>
+    <string name="fuzzy_pinyin_ch_c">ch = c</string>
+    <string name="fuzzy_pinyin_sh_s">sh = s</string>
+    <string name="fuzzy_pinyin_n_l">n = l</string>
+    <string name="fuzzy_pinyin_r_l">r = l</string>
+    <string name="fuzzy_pinyin_f_h">f = h</string>
+    <string name="fuzzy_pinyin_k_g">k = g</string>
+    <string name="fuzzy_pinyin_ang_an">ang = an</string>
+    <string name="fuzzy_pinyin_eng_en">eng = en</string>
+    <string name="fuzzy_pinyin_ing_in">ing = in</string>
+    <string name="fuzzy_pinyin_iang_ian">iang = ian</string>
+    <string name="fuzzy_pinyin_uang_uan">uang = uan</string>
+    <string name="fuzzy_pinyin_custom">自定义模糊音</string>
+    <string name="fuzzy_pinyin_custom_summary">形如 zh=z,ang=an，以英文逗号分隔多条</string>
     <string name="EnglishInput">英文输入</string>
     <string name="lx17_with_left_prefix">乱序17键盘显示拼音选择</string>
     <string name="space_auto">英文单词自动追加空格</string>
