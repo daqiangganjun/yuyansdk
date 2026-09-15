@@ -1,0 +1,18 @@
+{
+  "ndk": "28.2.13676358",
+  "cmake": "3.31.6",
+  "boost": {
+    "url": "https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz",
+    "sha256": "67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74"
+  },
+  "repositories": [
+    {"name": "librime", "url": "https://github.com/rime/librime.git", "revision": "417db2385f732cb0fa194b497042c42abb897d99", "recursive": true},
+    {"name": "librime-lua", "url": "https://github.com/hchunhui/librime-lua.git", "revision": "ec52e48ea18f11af37717a01c337f853215cf70b"},
+    {"name": "librime-lua-deps", "url": "https://github.com/hchunhui/librime-lua.git", "revision": "fa40fadd8af1e5b1fbd55703ccbd54476956d74c"},
+    {"name": "librime-octagram", "url": "https://github.com/lotem/librime-octagram.git", "revision": "bfb168ca33d8b372596fdf2007933f3da1cf360e"},
+    {"name": "librime-predict", "url": "https://github.com/rime/librime-predict.git", "revision": "920bd41ebf6f9bf6855d14fbe80212e54e749791"},
+    {"name": "snappy", "url": "https://github.com/google/snappy.git", "revision": "747488a9f3d0daf9b639b6704d7188fba48af179"},
+    {"name": "rime-frost", "url": "https://github.com/gaboolic/rime-frost.git", "revision": "7a7c311efee1d8d0884624677a1f7f99cade457f"},
+    {"name": "rime-ice", "url": "https://github.com/iDvel/rime-ice.git", "revision": "59fcb4a6bfa71e6ba4fc83af07ee55f0c5b76081"}
+  ]
+}

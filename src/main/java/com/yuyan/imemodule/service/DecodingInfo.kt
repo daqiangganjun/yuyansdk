@@ -1,6 +1,9 @@
 package com.yuyan.imemodule.service
 
 import android.view.KeyEvent
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.atomic.AtomicLong
 import androidx.lifecycle.MutableLiveData
 import com.yuyan.inputmethod.core.CandidateListItem
 import com.yuyan.inputmethod.core.Kernel
@@ -9,6 +12,8 @@ import com.yuyan.inputmethod.core.Kernel
  * 词库解码操作对象
  */
 object DecodingInfo {
+    private val candidateRevision = AtomicLong()
+    private val main = Handler(Looper.getMainLooper())
 
     // 翻页累积的候选词上限，超出部分对用户已无意义，只会长期占用内存
     private const val MAX_CACHED_CANDIDATES = 2000
@@ -24,6 +29,7 @@ object DecodingInfo {
      * 重置
      */
     fun reset() {
+        candidateRevision.incrementAndGet()
         isAssociate = false
         activeCandidate = 0
         activeCandidateBar = 0
@@ -46,6 +52,7 @@ object DecodingInfo {
 
     // 增加拼写字符
     fun inputAction(event: KeyEvent) {
+        candidateRevision.incrementAndGet()
         activeCandidate = 0
         activeCandidateBar = 0
         Kernel.inputKeyCode(event)
@@ -57,6 +64,7 @@ object DecodingInfo {
      * @param position 选择的position
      */
     fun selectPrefix(position: Int) {
+        candidateRevision.incrementAndGet()
         activeCandidate = 0
         activeCandidateBar = 0
         Kernel.selectPrefix(position)
@@ -69,6 +77,7 @@ object DecodingInfo {
      * 删除
      */
     fun deleteAction() {
+        candidateRevision.incrementAndGet()
         activeCandidate = 0
         activeCandidateBar = 0
         if(!isEngineFinish)Kernel.deleteAction()
@@ -96,34 +105,27 @@ object DecodingInfo {
         return Kernel.moveCaretTo(position)
     }
 
-    /**
-     * 输入停顿后以模糊音变体补充候选。
-     * @return 候选列表是否有补充
-     */
-    fun appendFuzzyCandidates(): Boolean {
-        if (isAssociate || isEngineFinish || isCandidatesEmpty) return false
-        if (!Kernel.appendFuzzyCandidates()) return false
-        candidatesLiveData.value = Kernel.candidates
-        return true
-    }
-
     val composingStrForCommit: String   // 获取输入的拼音字符串
         get() = Kernel.wordsShowPinyin.replace("'", "").ifEmpty { getCandidate(0)?.text?:""}
 
     val nextPageCandidates: Int   // 获取下一页的候选词
         get() {
+            val revision = candidateRevision.get()
+            val current = candidatesLiveData.value
             val cands = Kernel.nextPageCandidates
+            if (candidateRevision.get() != revision) return 0
             if (cands.isNotEmpty()) {
                 // plus 每翻一页都复制整个列表再追加，翻到底会累积成 O(n²) 的分配；
                 // 且累积量无上限，就地追加并限制总量
-                val current = candidatesLiveData.value
                 val merged = ArrayList<CandidateListItem>((current?.size ?: 0) + cands.size)
                 if (current != null) merged.addAll(current)
                 merged.addAll(cands)
-                candidatesLiveData.postValue(
-                    if (merged.size > MAX_CACHED_CANDIDATES) merged.subList(0, MAX_CACHED_CANDIDATES).toList()
-                    else merged
-                )
+                main.post {
+                    if (candidateRevision.get() == revision) {
+                        candidatesLiveData.value = if (merged.size > MAX_CACHED_CANDIDATES)
+                            merged.subList(0, MAX_CACHED_CANDIDATES).toList() else merged
+                    }
+                }
                 return cands.size
             }
             return 0
@@ -133,6 +135,7 @@ object DecodingInfo {
      * 选择一个候选词，且重新获取候选词列表
      */
     fun chooseDecodingCandidate(candId: Int): String {
+        candidateRevision.incrementAndGet()
         activeCandidate = 0
         activeCandidateBar = 0
         var candidate: String
@@ -168,6 +171,7 @@ object DecodingInfo {
 
     // 更新候选词
     fun cacheCandidates(words: Array<CandidateListItem>, associate: Boolean = false) {
+        candidateRevision.incrementAndGet()
         isAssociate = associate
         activeCandidate = 0
         activeCandidateBar = 0
@@ -178,6 +182,7 @@ object DecodingInfo {
      * 根据输入的字符查询候选词
      */
     fun getAssociateWord(words: String) {
+        candidateRevision.incrementAndGet()
         isAssociate = true
         Kernel.getAssociateWord(words)
     }

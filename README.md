@@ -94,6 +94,8 @@ git clone git@github.com:gurecn/yuyansdk.git
 | ![深色主题](./images/dark.jpg) | ![设置菜单](./images/setting.jpg) | ![物理键盘](./images/hardware_keyboard.jpg) |
 
 ## 许可证与商业授权声明
+本分支从 5.0.0 起使用 `native/` 中的自有 JNI 与固定版本的开源 librime，构建产物为 `libselfopt_rime.so`。旧 `libs/` 下的 `libyuyanime.so` 不再参与打包。以下闭源库授权说明保留作为原项目的历史声明，不适用于本分支自行实现的 JNI；所使用开源依赖的原始许可证随生成的词库包分发。
+
 本项目 [yuyansdk](https://github.com/gurecn/yuyansdk) 承诺，依据 [BSD-3-Clause license 许可证](./LICENSE) 条款**永久面向开源社区、个人用户免费开放使用，不上传输入数据**。为保障项目持续性，采用**双授权模式**：
 ### 一、开源代码授权（BSD 3-Clause）
 您在遵守 BSD 3-Clause License 全部条款的前提下，可以自由地：

@@ -30,7 +30,7 @@
     <string name="chinese_association_date">中文联想显示时间</string>
     <string name="fuzzy_pinyin_setting">模糊音</string>
     <string name="fuzzy_pinyin_enable">启用模糊音</string>
-    <string name="fuzzy_pinyin_enable_summary">按下列规则改写拼音再查一次，把等价读音的字词并入候选。仅全键拼音生效，九键与双拼的按键本身已把这些音归并到一处</string>
+    <string name="fuzzy_pinyin_enable_summary">等价读音由引擎统一排序，支持全拼、九键和双拼。修改后会重新准备词库配置</string>
     <string name="fuzzy_pinyin_zh_z">zh = z</string>
     <string name="fuzzy_pinyin_ch_c">ch = c</string>
     <string name="fuzzy_pinyin_sh_s">sh = s</string>
@@ -47,7 +47,7 @@
     <string name="fuzzy_pinyin_custom_title">自定义</string>
     <string name="fuzzy_pinyin_custom">自定义模糊音</string>
     <string name="fuzzy_pinyin_custom_summary">形如 zh=z,ang=an，以英文逗号分隔多条</string>
-    <string name="fuzzy_pinyin_entry_summary">平翘舌、前后鼻音等等价读音，仅全键拼音生效</string>
+    <string name="fuzzy_pinyin_entry_summary">平翘舌、前后鼻音等等价读音，支持全拼、九键和双拼</string>
     <string name="EnglishInput">英文输入</string>
     <string name="lx17_with_left_prefix">乱序17键盘显示拼音选择</string>
     <string name="space_auto">英文单词自动追加空格</string>

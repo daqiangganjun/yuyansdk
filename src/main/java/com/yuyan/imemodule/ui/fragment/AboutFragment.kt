@@ -79,7 +79,7 @@ class AboutFragment : PreferenceFragmentCompat() {
             addPreference(R.string.upstream_source, R.string.upstream_repo) {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CustomConstant.UPSTREAM_IME_REPO)))
             }
-            addPreference(R.string.license, "GPL-3.0 license ") {
+            addPreference(R.string.license, "BSD-3-Clause（项目源码）") {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CustomConstant.LICENSE_URL)))
             }
             addCategory(R.string.app_version) {

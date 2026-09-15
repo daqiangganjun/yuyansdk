@@ -1,8 +1,8 @@
 package com.yuyan.inputmethod.core
 
 import android.content.Context
-import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.application.Launcher
+import com.yuyan.inputmethod.EngineRuntime
 
 class Rime(fullCheck: Boolean) {
 
@@ -22,30 +22,26 @@ class Rime(fullCheck: Boolean) {
         }
 
         init {
-            System.loadLibrary("yuyanime")
+            System.loadLibrary("selfopt_rime")
         }
 
-        // 页大小是 session 级配置，只需在引擎启动与方案切换后各设置一次
-        private const val PAGE_SIZE = 100
-
         fun startup(context: Context, fullCheck: Boolean) {
-            startupRime(context, CustomConstant.RIME_DICT_PATH, CustomConstant.RIME_DICT_PATH, fullCheck)
-            setRimePageSize(PAGE_SIZE)
-            updateStatus()
+            EngineRuntime.initialize(context)
         }
 
         @JvmStatic
         fun destroy() {
-            exitRime()
             instance = null
+            mContext = null
+            mStatus = null
         }
 
         fun updateStatus() {
-            mStatus = getRimeStatus() ?: RimeStatus()
+            mStatus = if (EngineRuntime.isReady) getRimeStatus() ?: RimeStatus() else RimeStatus()
         }
 
         fun updateContext() {
-            mContext = getRimeContext() ?: RimeContext()
+            mContext = if (EngineRuntime.isReady) getRimeContext() ?: RimeContext() else RimeContext()
             updateStatus()
         }
 
@@ -79,7 +75,7 @@ class Rime(fullCheck: Boolean) {
 
         @JvmStatic
         fun processKey(keycode: Int, mask: Int): Boolean {
-            if (keycode <= 0 || keycode == 0xffffff) return false
+            if (!EngineRuntime.isReady || keycode <= 0 || keycode == 0xffffff) return false
             return processRimeKey(keycode, mask).also {
                 updateContext()
             }
@@ -87,18 +83,21 @@ class Rime(fullCheck: Boolean) {
 
         @JvmStatic
         fun replaceKey(caretPos: Int, length: Int, key: String): Boolean {
+            if (!EngineRuntime.isReady) return false
             return replaceRimeKey(caretPos, length, key).also {
                 updateContext()
             }
         }
 
         @JvmStatic
-        fun clearComposition() { clearRimeComposition()
+        fun clearComposition() {
+            if (EngineRuntime.isReady) clearRimeComposition()
             updateContext()
         }
 
         @JvmStatic
         fun selectCandidate(index: Int): Boolean {
+            if (!EngineRuntime.isReady) return false
             return selectRimeCandidate(index).also {
                 updateContext()
             }
@@ -106,27 +105,35 @@ class Rime(fullCheck: Boolean) {
 
         @JvmStatic
         fun setOption(option: String, value: Boolean) {
-            setRimeOption(option, value)
+            if (EngineRuntime.isReady) setRimeOption(option, value)
         }
 
         @JvmStatic
         fun selectSchema(schemaId: String): Boolean {
-            return selectRimeSchema(schemaId).also {
-                setRimePageSize(PAGE_SIZE)
+            return EngineRuntime.selectSchema(schemaId).also {
                 updateContext()
             }
         }
 
         fun getAssociateList(key: String?): Array<String?> {
-            return getRimeAssociateList(key)
+            return if (EngineRuntime.isReady) getRimeAssociateList(key) ?: emptyArray() else emptyArray()
         }
 
         fun chooseAssociate(index: Int): Boolean {
-            return selectRimeAssociate(index)
+            return EngineRuntime.isReady && selectRimeAssociate(index)
         }
 
         @JvmStatic
-        external fun startupRime(context: Context, sharedDir: String, userDir: String, fullCheck: Boolean, )
+        external fun startupRime(context: Context, sharedDir: String, userDir: String, fullCheck: Boolean): Boolean
+
+        @JvmStatic
+        external fun migrateUserData(sharedDir: String, stagedUserDir: String): Boolean
+
+        @JvmStatic
+        external fun getLastError(): String
+
+        @JvmStatic
+        external fun getRawInput(): String
 
         @JvmStatic
         external fun exitRime()
@@ -156,10 +163,13 @@ class Rime(fullCheck: Boolean) {
         external fun setRimeOption(option: String, value: Boolean, )
 
         @JvmStatic
-        external fun getCurrentRimeSchema(): String
+        fun getCurrentRimeSchema(): String = EngineRuntime.logicalSchema
 
         @JvmStatic
         external fun selectRimeSchema(schemaId: String): Boolean
+
+        @JvmStatic
+        external fun validateRimeSchema(): Boolean
 
         @JvmStatic
         external fun selectRimeCandidate(index: Int): Boolean
@@ -168,7 +178,7 @@ class Rime(fullCheck: Boolean) {
         external fun getRimeKeycodeByName(name: String): Int
 
         @JvmStatic
-        external fun getRimeAssociateList(key: String?): Array<String?>
+        external fun getRimeAssociateList(key: String?): Array<String?>?
 
         @JvmStatic
         external fun selectRimeAssociate(index: Int): Boolean

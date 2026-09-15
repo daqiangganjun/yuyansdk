@@ -59,9 +59,6 @@ object Kernel {
     // 将插入点移到拼音行的指定字符之前
     fun moveCaretTo(position: Int): Boolean = RimeEngine.moveCaretTo(position)
 
-    // 以模糊音变体补充候选词
-    fun appendFuzzyCandidates(): Boolean = RimeEngine.appendFuzzyCandidates()
-
     // 得到即将上屏的候选词
     val commitText: String
         get() = RimeEngine.preCommitText

@@ -5,9 +5,7 @@ import com.yuyan.imemodule.prefs.AppPrefs
 /**
  * 模糊音规则。
  *
- * Rime 的模糊音靠方案的 speller/algebra 在编译 prism 时生成等价拼写，随包分发的是编译产物，
- * 设备上没有方案与词典源文件，无法重建。这里改在输入串层面处理：按规则改写出等价拼音串，
- * 由 [com.yuyan.inputmethod.RimeEngine] 另查一遍并入候选栏。
+ * 模糊音写入各方案的 speller/algebra，在编码映射之前生成等价拼写。
  */
 object FuzzyPinYinUtils {
 
@@ -38,6 +36,17 @@ object FuzzyPinYinUtils {
     val isEnabled: Boolean
         get() = AppPrefs.getInstance().fuzzyPinyin.fuzzyPinyinEnable.getValue()
 
+    fun algebraRules(): List<String> {
+        if (!isEnabled) return emptyList()
+        return activeRules().flatMap { rule ->
+            listOf(rule.from to rule.to, rule.to to rule.from).map { (from, to) ->
+                // z→zh 等规则只匹配声母后的元音，避免把已有 zh 再展开成 zhh。
+                if (rule.prefix) "derive/^$from(?=[aeiouv])/$to/"
+                else "derive/$from\$/$to/"
+            }
+        }.distinct()
+    }
+
     private fun activeRules(): List<Rule> {
         val prefs = AppPrefs.getInstance().fuzzyPinyin
         val rules = ArrayList<Rule>(PRESET.size + 4)
@@ -63,47 +72,4 @@ object FuzzyPinYinUtils {
         }
     }
 
-    /**
-     * 按模糊规则改写音节序列，得到若干等价输入串（以分词符连接）。
-     *
-     * 先逐个改写单个音节（由后往前，最近输入的音节优先），再给出整串一并改写的版本；
-     * 组合数会随音节数指数增长，故以 [limit] 截断——每个变体都要重放一遍按键，代价不低。
-     */
-    fun variantsOf(syllables: List<String>, limit: Int): List<String> {
-        if (syllables.isEmpty() || limit <= 0) return emptyList()
-        val rules = activeRules()
-        if (rules.isEmpty()) return emptyList()
-        val original = syllables.joinToString("'")
-        val result = LinkedHashSet<String>()
-        for (i in syllables.indices.reversed()) {
-            for (alt in alternatives(syllables[i], rules)) {
-                val copy = syllables.toMutableList()
-                copy[i] = alt
-                result.add(copy.joinToString("'"))
-                if (result.size >= limit + 1) break
-            }
-            if (result.size >= limit + 1) break
-        }
-        if (syllables.size > 1 && result.size < limit + 1) {
-            result.add(syllables.joinToString("'") { alternatives(it, rules).firstOrNull() ?: it })
-        }
-        result.remove(original)
-        return result.take(limit)
-    }
-
-    /** 单个音节按规则可改写成的其它形式，两个方向都试 */
-    private fun alternatives(syllable: String, rules: List<Rule>): List<String> {
-        val out = LinkedHashSet<String>(4)
-        for (rule in rules) {
-            if (rule.prefix) {
-                if (syllable.startsWith(rule.from)) out.add(rule.to + syllable.substring(rule.from.length))
-                else if (syllable.startsWith(rule.to)) out.add(rule.from + syllable.substring(rule.to.length))
-            } else {
-                if (syllable.endsWith(rule.from)) out.add(syllable.dropLast(rule.from.length) + rule.to)
-                else if (syllable.endsWith(rule.to)) out.add(syllable.dropLast(rule.to.length) + rule.from)
-            }
-        }
-        out.remove(syllable)
-        return out.toList()
-    }
 }

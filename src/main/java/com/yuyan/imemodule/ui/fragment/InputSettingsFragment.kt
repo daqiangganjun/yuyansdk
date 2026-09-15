@@ -2,6 +2,7 @@ package com.yuyan.imemodule.ui.fragment
 
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceScreen
+import androidx.preference.ListPreference
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.manager.InputModeSwitcher
@@ -18,6 +19,14 @@ class InputSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().in
      * 模糊音单列一页。十来条规则加自定义项若平铺在此，会把其它输入设置淹没。
      */
     override fun onPreferenceUiCreated(screen: PreferenceScreen) {
+        screen.addPreference(ListPreference(requireContext()).apply {
+            key = "rime_dictionary_family"
+            title = "拼音词库"
+            entries = arrayOf("白霜拼音", "雾凇拼音")
+            entryValues = arrayOf("frost", "ice")
+            setDefaultValue("frost")
+            summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+        })
         screen.addPreference(
             R.string.fuzzy_pinyin_setting,
             getString(R.string.fuzzy_pinyin_entry_summary)

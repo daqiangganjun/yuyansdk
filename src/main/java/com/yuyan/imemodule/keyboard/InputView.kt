@@ -69,6 +69,8 @@ import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import com.yuyan.imemodule.view.widget.LifecycleRelativeLayout
 import com.yuyan.inputmethod.CustomEngine
+import com.yuyan.inputmethod.EngineRuntime
+import com.yuyan.inputmethod.core.Rime
 import com.yuyan.inputmethod.core.CandidateListItem
 import com.yuyan.inputmethod.core.Kernel
 import splitties.dimensions.dp
@@ -156,7 +158,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     init {
         initNavbarBackground(service)
-        InputModeSwitcher.reset()
         mSkbRoot = LayoutInflater.from(context).inflate(R.layout.sdk_skb_container, this, false) as RelativeLayout
         addView(mSkbRoot)
         mSkbCandidatesBarView = mSkbRoot.findViewById(R.id.candidates_bar)
@@ -182,6 +183,28 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         DecodingInfo.candidatesLiveData.observe(this) {
             updateCandidateBar()
             (KeyboardManager.instance.currentContainer as? CandidatesContainer)?.showCandidatesView()
+        }
+        val engineStatus = TextView(context).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.BLACK)
+            setBackgroundColor(Color.rgb(255, 244, 207))
+            textSize = 14f
+            setOnClickListener {
+                if (EngineRuntime.status.value?.phase == EngineRuntime.Phase.Failed) {
+                    EngineRuntime.prepare(context, force = true)
+                }
+            }
+        }
+        addView(engineStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            addRule(ALIGN_TOP, mSkbRoot.id)
+        })
+        EngineRuntime.status.observe(this) { state ->
+            engineStatus.text = state.message
+            engineStatus.visibility = if (state.phase == EngineRuntime.Phase.Ready) GONE else VISIBLE
+            engineStatus.bringToFront()
+            DecodingInfo.reset()
+            Rime.updateContext()
         }
         initView(context)
     }
@@ -535,6 +558,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             processFunctionKey(event)
             return true
         }
+        if (!EngineRuntime.isReady && (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish)) return true
         InputModeSwitcher.resetCharCase()
         val englishCellDisable = InputModeSwitcher.isEnglish && !appPrefs.input.abcSearchEnglishCell.getValue()
         return when {
@@ -663,7 +687,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             (Character.isLetterOrDigit(keyChar) && keyCode != KeyEvent.KEYCODE_0) || keyCode == KeyEvent.KEYCODE_APOSTROPHE || keyCode == KeyEvent.KEYCODE_SEMICOLON -> {
                 textBeforeCursors.clear()
                 DecodingInfo.inputAction(event)
-                updateCandidate()
+                if (DecodingInfo.isEngineFinish && Kernel.commitText.isNotEmpty()) {
+                    commitDecInfoText(Kernel.commitText)
+                } else {
+                    updateCandidate()
+                }
                 true
             }
             keyCode != 0 -> {
@@ -722,24 +750,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             resetToIdleState()
         }
         if (InputModeSwitcher.isEnglish) setComposingText(DecodingInfo.composingStrForCommit)
-        scheduleFuzzyCandidates()
-    }
-
-    /**
-     * 模糊音补查任务。
-     *
-     * 每条变体串都要在引擎里重放一遍按键，代价远高于一次普通按键，逐键去查会拖慢连打；
-     * 改为等输入停顿后补一次，候选栏在用户开始挑词时才增补，不打断输入节奏。
-     */
-    private val fuzzyCandidatesTask = Runnable { DecodingInfo.appendFuzzyCandidates() }
-
-    /** 判定「输入停顿」的时长，短于常人两次击键的间隔，连打时不会触发 */
-    private val fuzzyCandidatesDelay = 180L
-
-    private fun scheduleFuzzyCandidates() {
-        removeCallbacks(fuzzyCandidatesTask)
-        if (!InputModeSwitcher.isChinese || DecodingInfo.isAssociate || DecodingInfo.isCandidatesEmpty) return
-        postDelayed(fuzzyCandidatesTask, fuzzyCandidatesDelay)
     }
 
     /**
@@ -861,7 +871,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     private fun resetCandidateWindow() {
-        removeCallbacks(fuzzyCandidatesTask)
         DecodingInfo.reset()
         (KeyboardManager.instance.currentContainer as? T9TextContainer)?.updateSymbolListView()
     }

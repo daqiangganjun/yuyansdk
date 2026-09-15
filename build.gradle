@@ -23,7 +23,7 @@ android {
         targetSdk 35
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', "x86", "x86_64"
+            abiFilters 'arm64-v8a'
         }
         javaCompileOptions {
             annotationProcessorOptions {
@@ -70,7 +70,11 @@ android {
     }
     sourceSets {
         offline {
-            jniLibs.srcDirs = ['libs']
+            jniLibs.srcDirs = ["$buildDir/generated/rime/jniLibs"]
+            assets.srcDirs += ["$buildDir/generated/rime/assets"]
+        }
+        main {
+            assets.exclude 'rime/**'
         }
     }
 
@@ -80,6 +84,17 @@ android {
         targetCompatibility 17
     }
 }
+
+def nativeSourceRoot = providers.gradleProperty('rimeSourceRoot').orElse(file('native/.cache').absolutePath)
+tasks.register('buildRimeNative', Exec) {
+    inputs.files(fileTree('native') { exclude '.cache/**', 'build/**', '__pycache__/**' })
+    inputs.file('src/main/java/com/yuyan/inputmethod/util/LX17PinYinUtils.kt')
+    outputs.dir("$buildDir/generated/rime")
+    commandLine 'python', file('native/build_native.py').absolutePath,
+        '--sdk', android.sdkDirectory.absolutePath, '--source-root', nativeSourceRoot.get()
+    if (providers.gradleProperty('rimeSkipFetch').isPresent()) args '--skip-fetch'
+}
+tasks.named('preBuild').configure { dependsOn 'buildRimeNative' }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [])

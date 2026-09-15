@@ -9,6 +9,8 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.RelativeLayout
 import android.widget.Toast
+import android.widget.TextView
+import android.graphics.Color
 import androidx.core.text.isDigitsOnly
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -25,6 +27,8 @@ import com.yuyan.imemodule.singleton.EnvironmentSingleton.Companion.instance
 import com.yuyan.imemodule.utils.DevicesUtils
 import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.view.widget.LifecycleRelativeLayout
+import com.yuyan.inputmethod.EngineRuntime
+import com.yuyan.inputmethod.core.Kernel
 import splitties.dimensions.dp
 import splitties.views.bottomPadding
 import splitties.views.leftPadding
@@ -45,7 +49,6 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
     var mSkbCandidatesBarView: FloatCandidateBar
 
     init {
-        InputModeSwitcher.reset()
         initDisplayCutout(service)
         mFloatCandidateBarWidth = (if(instance.isLandscape)instance.mScreenHeight else instance.mScreenWidth) - dp(40)
         mSkbRoot = LayoutInflater.from(context).inflate(R.layout.sdk_candidate_container, this, false) as RelativeLayout
@@ -53,6 +56,22 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
         mSkbCandidatesBarView = mSkbRoot.findViewById(R.id.candidates_bar)
         DecodingInfo.candidatesLiveData.observe(this) {
             mSkbCandidatesBarView.showCandidates()
+        }
+        val engineStatus = TextView(context).apply {
+            setTextColor(Color.BLACK)
+            setBackgroundColor(Color.rgb(255, 244, 207))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setOnClickListener {
+                if (EngineRuntime.status.value?.phase == EngineRuntime.Phase.Failed)
+                    EngineRuntime.prepare(context, force = true)
+            }
+        }
+        mSkbRoot.addView(engineStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        EngineRuntime.status.observe(this) { state ->
+            engineStatus.text = state.message
+            engineStatus.visibility = if (state.phase == EngineRuntime.Phase.Ready) GONE else VISIBLE
+            engineStatus.bringToFront()
+            DecodingInfo.reset()
         }
         initView()
     }
@@ -113,6 +132,7 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
     }
 
     fun processKeyUp(event: KeyEvent): Boolean {
+        if (!EngineRuntime.isReady && event.keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) return true
         InputModeSwitcher.resetCharCase()
         return if (processFunctionKeys(event)) true
         else if (InputModeSwitcher.isChinese) processInput(event)
@@ -177,7 +197,12 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
             }
             Character.isLetter(keyChar) || keyCode == KeyEvent.KEYCODE_APOSTROPHE || keyCode == KeyEvent.KEYCODE_SEMICOLON -> {
                 DecodingInfo.inputAction(event)
-                updateCandidate()
+                if (DecodingInfo.isEngineFinish && Kernel.commitText.isNotEmpty()) {
+                    commitDecInfoText(Kernel.commitText)
+                    resetToIdleState()
+                } else {
+                    updateCandidate()
+                }
                 true
             }
             else -> {

@@ -233,8 +233,11 @@ object InputModeSwitcher {
         }
         val hasNoEnterAction = (editorInfo.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
         mToggleStates.imeAction = if(hasNoEnterAction) 0 else editorInfo.imeOptions and EditorInfo.IME_MASK_ACTION
-        if (newInputMode != mInputMode && MODE_UNSET != newInputMode) {
+        val changed = newInputMode != mInputMode && MODE_UNSET != newInputMode
+        if (changed) {
             saveInputMode(newInputMode)
+        }
+        if (MODE_UNSET != newInputMode && (changed || KeyboardManager.instance.currentContainer == null)) {
             KeyboardManager.instance.switchKeyboard()
         }
         (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()

@@ -23,6 +23,7 @@ import com.yuyan.imemodule.data.theme.ThemeManager.onSystemDarkModeChange
 import com.yuyan.imemodule.data.theme.ThemeManager.removeOnChangedListener
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.KeyboardManager
+import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
@@ -66,6 +67,7 @@ class ImeService : InputMethodService() {
     }
     override fun onCreate() {
         super.onCreate()
+        InputModeSwitcher.reset()
         addOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.registerOnChangeListener(clipboardUpdateContentListener)
     }
@@ -75,7 +77,10 @@ class ImeService : InputMethodService() {
     }
 
     override fun onCreateCandidatesView(): View {
-        return CandidateView(baseContext, this).also { mCandidateView = it }
+        return CandidateView(baseContext, this).also {
+            mCandidateView = it
+            if (isHardwareKeyboard) it.onStartInput(currentInputEditorInfo, false)
+        }
     }
 
     override fun onEvaluateInputViewShown(): Boolean {
