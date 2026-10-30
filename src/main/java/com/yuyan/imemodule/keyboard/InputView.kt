@@ -19,14 +19,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.scale
 import androidx.core.view.ViewCompat
@@ -157,7 +156,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
 
     init {
-        initNavbarBackground(service)
         mSkbRoot = LayoutInflater.from(context).inflate(R.layout.sdk_skb_container, this, false) as RelativeLayout
         addView(mSkbRoot)
         mSkbCandidatesBarView = mSkbRoot.findViewById(R.id.candidates_bar)
@@ -166,6 +164,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         mInputKeyboardContainer = mSkbRoot.findViewById(R.id.ll_input_keyboard_container)
         mAddPhrasesLayout = EditPhrasesView(context)
         mLlKeyboardBottomHolder = mSkbRoot.findViewById(R.id.iv_keyboard_holder)
+        initSystemBars()
         KeyboardManager.instance.setData(mSkbRoot.findViewById(R.id.skb_input_keyboard_view), this)
         PopupComponent.get().root.let { root ->
             root.parent?.let { (it as ViewGroup).removeView(root) }
@@ -244,6 +243,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             }
         }
         mLlKeyboardBottomHolder.removeAllViews()
+        mFullDisplayKeyboardBar = null
         mLlKeyboardBottomHolder.layoutParams.width = env.skbWidth
         mInputKeyboardContainer.layoutParams.width = env.inputAreaWidth
         if (env.keyboardModeFloat) {
@@ -257,7 +257,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.bottomPadding = 0
             mSkbRoot.rightPadding = 0
 
-            mLlKeyboardBottomHolder.minimumHeight = env.heightForKeyboardMove
             val mIvKeyboardMove = ImageView(context).apply {
                 setImageResource(R.drawable.ic_horizontal_line)
                 isClickable = true
@@ -274,9 +273,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             if (fullDisplayEnable && !env.isLandscape) {
                 mFullDisplayKeyboardBar = FullDisplayKeyboardBar(context, this)
                 mLlKeyboardBottomHolder.addView(mFullDisplayKeyboardBar)
-                mLlKeyboardBottomHolder.minimumHeight = env.heightForFullDisplayBar + env.systemNavbarWindowsBottom
-            } else {
-                mLlKeyboardBottomHolder.minimumHeight = env.systemNavbarWindowsBottom
             }
             bottomPadding = 0
             rightPadding = 0
@@ -285,6 +281,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.bottomPadding = mBottomPaddingKey.getValue()
             mSkbRoot.rightPadding = mRightPaddingKey.getValue()
         }
+        updateBottomHolderInsets()
         updateTheme()
     }
 
@@ -375,6 +372,14 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
         mFullDisplayKeyboardBar?.updateTheme(keyTextColor)
         mAddPhrasesLayout.updateTheme(activeTheme)
+        service.window.window?.let { window ->
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                activeTheme.keyboardColor
+            } else Color.BLACK
+            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars =
+                ColorUtils.calculateLuminance(activeTheme.keyboardColor) > 0.5
+        }
     }
 
     /**
@@ -1094,33 +1099,29 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
     }
 
-    private fun initNavbarBackground(service: ImeService) {
-        service.window.window?.also { win ->
-            WindowCompat.setDecorFitsSystemWindows(win, false)
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                @Suppress("DEPRECATION")
-                win.navigationBarColor = Color.TRANSPARENT
-            } else {
-                win.insetsController?.apply {
-                    hide(WindowInsets.Type.navigationBars())
-                    systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) win.isNavigationBarContrastEnforced = false
+    private fun initSystemBars() {
+        service.window.window?.let { window ->
+            WindowCompat.setDecorFitsSystemWindows(window, false)
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
             val env = EnvironmentSingleton.instance
-            env.systemNavbarWindowsBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-            val fullDisplayEnable = appPrefs.internal.fullDisplayKeyboardEnable.getValue()
-            mLlKeyboardBottomHolder.minimumHeight = when {
-                // 悬浮模式此处是拖动条，高度须与 initView 中的设置一致，
-                // 置 0 会让拖动条塌缩到几乎无法点中
-                env.keyboardModeFloat -> env.heightForKeyboardMove
-                fullDisplayEnable -> env.heightForFullDisplayBar + env.systemNavbarWindowsBottom
-                else -> env.systemNavbarWindowsBottom
-            }
+            env.systemNavbarWindowsBottom = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.captionBar()
+            ).bottom
+            updateBottomHolderInsets()
             insets
+        }
+    }
+
+    private fun updateBottomHolderInsets() {
+        val env = EnvironmentSingleton.instance
+        val navigationBottom = if (env.keyboardModeFloat) 0 else env.systemNavbarWindowsBottom
+        mLlKeyboardBottomHolder.bottomPadding = navigationBottom
+        mLlKeyboardBottomHolder.minimumHeight = when {
+            env.keyboardModeFloat -> env.heightForKeyboardMove
+            mFullDisplayKeyboardBar != null -> env.heightForFullDisplayBar + navigationBottom
+            else -> navigationBottom
         }
     }
 

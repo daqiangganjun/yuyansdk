@@ -34,6 +34,7 @@ object RimeEngine {
      */
     private val rimeIndexMap = ArrayList<Int>(64)
     private var rimeCandidateCount = 0
+    private const val RAW_INPUT_CANDIDATE = -1
 
     /**
      * 用户实际按下的键序列，供拼音编辑重放使用。
@@ -114,7 +115,14 @@ object RimeEngine {
     fun selectCandidate(index: Int): String? {
         editCaret = -1
         val listIndex = index - customPhraseSize
-        Rime.selectCandidate(rimeIndexMap.getOrElse(listIndex) { listIndex })
+        val rimeIndex = rimeIndexMap.getOrElse(listIndex) { listIndex }
+        if (rimeIndex == RAW_INPUT_CANDIDATE && listIndex >= 0) {
+            val text = showCandidates.getOrNull(index)?.text ?: return null
+            reset()
+            preCommitText = text
+            return text
+        }
+        Rime.selectCandidate(rimeIndex)
         rawInputValid = false
         keyRecordStack.pushCandidateSelectAction()
         return updateCandidatesOrCommitText()
@@ -431,6 +439,11 @@ object RimeEngine {
                 phrase.map { content -> CandidateListItem("📋", content) }.toMutableList().plus(rimeCandidates)
             }
             else -> rimeCandidates
+        }
+        // 无匹配时保留原文候选，避免上层将空候选误判为本轮输入结束。
+        if (showCandidates.isEmpty() && compositionText.isNotEmpty()) {
+            showCandidates = listOf(CandidateListItem("", compositionText.replace("'", "")))
+            rimeIndexMap.add(RAW_INPUT_CANDIDATE)
         }
         var count = compositionText.count { it in 'A'..'Z' }
         if (count > 0) {

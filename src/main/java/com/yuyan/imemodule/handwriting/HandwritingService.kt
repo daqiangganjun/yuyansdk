@@ -13,7 +13,7 @@ import android.os.RemoteException
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.google.mlkit.common.MlKit
-import com.google.mlkit.vision.digitalink.Ink
+import com.google.mlkit.vision.digitalink.recognition.Ink
 import com.yuyan.inputmethod.MlKitHandwritingModel
 import java.util.concurrent.CopyOnWriteArrayList
 

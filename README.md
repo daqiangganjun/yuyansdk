@@ -36,7 +36,7 @@
 + 拼音输入扩展：支持繁体、简体，支持中英文混输，支持表情描述输入；
 + 剪切板：支持剪切板联想显示、剪切板及清空操作；
 + 常用语：支持自定义常用语、常用语快捷输入、编辑、删除等操作；
-+ 全面屏键盘优化：支持全面屏键盘优化导航栏功能；
++ 底部快捷栏：默认使用系统底栏，可选增加输入法切换、剪贴板、常用语和滑动光标功能；
 + 隐藏输入法图标：支持隐藏输入法图标功能。
 
 ## 已知问题：
@@ -48,9 +48,10 @@
   临时方案：切换横竖屏前，确保输入框内容为空。
 
 ## 运行环境：
-> gradle:8.3.2  
-> kotlin-gradle-plugin:1.9.22  
-> kotlin-serialization:2.0.0  
+> Android Gradle Plugin：8.11.1；Gradle：8.14.3<br>
+> kotlin-gradle-plugin：2.2.21<br>
+> kotlin-serialization：2.2.21；KSP：2.2.21-2.0.5<br>
+> ML Kit digital-ink-recognition：19.0.0（原生库支持 16 KB 页面）<br>
 > Android minSdk：23  
 > Android targetSdk：35  
 > JDK: penjdk version "17.0.11" 2024-04-16

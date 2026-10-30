@@ -26,7 +26,7 @@ import splitties.views.dsl.core.wrapContent
 import kotlin.math.abs
 
 /**
- * 全面屏键盘优化
+ * 可选底部快捷栏
  */
 @SuppressLint("ViewConstructor")
 class FullDisplayKeyboardBar(context: Context?, inputView: InputView) : LinearLayout(context) {

@@ -102,9 +102,9 @@
     <string name="build_git_hash">构建哈希</string>
     <string name="build_time">构建时间</string>
     <string name="clipboard">剪贴板</string>
-    <string name="full_display_keyboard">全面屏键盘优化</string>
-    <string name="keyboard_full_display_advanced_tip">多功能键盘</string>
-    <string name="keyboard_full_display_normal_tip">普通键盘</string>
+    <string name="full_display_keyboard">底部快捷栏</string>
+    <string name="keyboard_full_display_advanced_tip">增加快捷栏</string>
+    <string name="keyboard_full_display_normal_tip">使用系统底栏</string>
     <string name="keyboard_full_display_key_left">左侧功能键</string>
     <string name="keyboard_full_display_key_right">右侧功能键</string>
     <string name="keyboard_full_display_key_center">中间区域</string>

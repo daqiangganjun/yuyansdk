@@ -32,7 +32,7 @@ class EnvironmentSingleton private constructor() {
     var heightForCandidatesArea = 0 // 候选词区域的高度
     var heightForcomposing = 0 // 候选词拼音区域的高度
     var heightForCandidates = 0 // 候选词区域的高度
-    var heightForFullDisplayBar = 0 // 智能导航栏高度
+    var heightForFullDisplayBar = 0 // 快捷栏最小高度
     var heightForKeyboardMove = 0 // 悬浮键盘移动条高度
     var keyTextSize = 0 // 正常按键中文本的大小
     var keyTextSmallSize = 0 // 正常按键中文本的大小,小值
@@ -127,7 +127,7 @@ class EnvironmentSingleton private constructor() {
     val skbAreaHeight:Int
         get() = instance.inputAreaHeight + if(!instance.keyboardModeFloat) {
             AppPrefs.getInstance().internal.keyboardBottomPadding.getValue() + instance.systemNavbarWindowsBottom +
-            if(AppPrefs.getInstance().internal.fullDisplayKeyboardEnable.getValue()) instance.heightForFullDisplayBar else 0
+            if(!instance.isLandscape && AppPrefs.getInstance().internal.fullDisplayKeyboardEnable.getValue()) instance.heightForFullDisplayBar else 0
         } else instance.heightForKeyboardMove
 
     val leftMarginWidth:Int

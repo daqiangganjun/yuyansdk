@@ -6,6 +6,13 @@ plugins {
     id 'kotlin-parcelize'
     id 'kotlinx-serialization'
 }
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 static def getAppGitHead() {
     return "git rev-parse HEAD".execute().text.trim()
 }
@@ -17,6 +24,7 @@ static def getAppBuildTime() {
 
 android {
     compileSdk 36
+    buildToolsVersion '36.0.0'
     namespace 'com.yuyan.imemodule'
     defaultConfig {
         minSdk 23
@@ -104,7 +112,7 @@ dependencies {
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
     implementation 'androidx.emoji2:emoji2:1.5.0'
     implementation 'androidx.emoji2:emoji2-views:1.5.0'
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.0"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.2.21"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2'
@@ -118,13 +126,13 @@ dependencies {
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
     // 手写识别：搜狗商业库的授权绑定原包名，本分支改名后失效，改用可离线运行的 ML Kit。
     // 注意其中文模型不随包分发，需运行时下载一次，见 MlKitHandwritingModel。
-    // 固定 17.0.1：19.x 由 Kotlin 2.1 编译，与本项目的 Kotlin 1.9.22 元数据不兼容
+    // 19.0.0 支持 16 KB 页面，编译器需能读取 Kotlin 2.1 元数据。
     //
     // 曾尝试排除 transport-backend-cct（Google 遥测的上传实现）以从源头去除上传能力，
     // 但 ML Kit 的依赖注入图在初始化时即强制实例化 CCTDestination，缺类会直接
     // NoClassDefFoundError 崩溃，故必须保留。改为在 manifest 中移除其后端发现服务与
     // 两个调度器：类虽在，却既注册不到后端也无法被调度，事件无从上传。
-    implementation 'com.google.mlkit:digital-ink-recognition:17.0.1'
+    implementation 'com.google.mlkit:digital-ink-recognition:19.0.0'
     // ML Kit 下载模型所依赖，本为其传递依赖；因 HandwritingService 需在 :hw 进程内
     // 手动 WorkManager.initialize()（自动初始化已在 manifest 中移除）而显式声明
     implementation 'androidx.work:work-runtime:2.7.0'
