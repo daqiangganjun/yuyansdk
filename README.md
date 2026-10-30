@@ -39,14 +39,6 @@
 + 底部快捷栏：默认使用系统底栏，可选增加输入法切换、剪贴板、常用语和滑动光标功能；
 + 隐藏输入法图标：支持隐藏输入法图标功能。
 
-## 已知问题：
-* 小米手机中键盘菜单点击设置等无反应:  
-  由于小米手机中键盘跳转应用界面需借助`后台弹出界面`权限，该权限需用户手动开启：设置-应用管理-语燕输入法-权限管理-开启`后台弹出界面`权限即可。
-* 三星手机按键音量调节无效:  
-  语燕输入法使用系统`通知`音量作为按键默认音量，但不同手机表现不同。输入法会以手机系统音量设置为前提，当手机静音时，无输入法按键音。当手机未静音时，以`通知`音量大小为基准进行调节。在三星手机中，基于`系统`音量大小进行调解。
-* 在输入一半内容时切换横竖屏，较大概率导致横屏模式屏幕触摸无效，仅能点击键盘按键。
-  临时方案：切换横竖屏前，确保输入框内容为空。
-
 ## 运行环境：
 > Android Gradle Plugin：8.11.1；Gradle：8.14.3<br>
 > kotlin-gradle-plugin：2.2.21<br>
@@ -70,29 +62,10 @@ git clone git@github.com:gurecn/yuyansdk.git
 在Android Studio其他应用项目内，import Module操作导入项目后，在原应用`build.gradle`中添加项目依赖：`implementation project(':yuyansdk')`，然后更新项目即可。具体调用方式参考[语燕输入法](https://github.com/gurecn/YuyanIme)
 
 ## 键盘预览：
-| 九宫键盘 | 全拼键盘 | 乱序17 |
-| - | - | - |
-| ![九宫格拼音键盘](./images/t9_pinyin.jpg) | ![全键拼音键盘](./images/qwerty_pinyin.jpg) | ![乱序17拼音](./images/double_lx17.jpg) |
 
-| 双拼键盘 | 笔画键盘 | 手写键盘 |
-| - | - | - |
-| ![双拼键盘](./images/double_pinyin.jpg) | ![笔画键盘](./images/stroke_pinyin.jpg) | ![手写键盘](./images/writing_pinyin.jpg) |
-
-| 英语键盘 | 数字键盘 | 编辑键盘 |
-| - | - | - |
-| ![英语键盘](./images/qwerty.jpg) |  ![数字键盘](./images/number.jpg) | ![编辑键盘](./images/textedit.jpg) |
-
-| 剪切板 | 单手键盘 | 悬浮键盘 |
-| - | - | - |
-| ![剪切板](./images/clipboard.jpg) | ![单手键盘](./images/onehand.jpg) | ![悬浮键盘](./images/float.jpg) |
-
-| 表情键盘 | 微信特效 | 数字行 |
-| - | - | - |
-| ![表情键盘](./images/emoji.jpg) | ![微信特效](./images/emoji_wechat.jpg) | ![数字行](./images/number_line.jpg) |
-
-| 深色主题 | 设置菜单 | 物理键盘 |
-| - | - | - |
-| ![深色主题](./images/dark.jpg) | ![设置菜单](./images/setting.jpg) | ![物理键盘](./images/hardware_keyboard.jpg) |
+| 普通键盘 | 悬浮键盘 |
+| --- | --- |
+| ![普通键盘](https://raw.githubusercontent.com/daqiangganjun/YuyanSelfOpt/master/images/普通键盘.jpg) | ![悬浮键盘](https://raw.githubusercontent.com/daqiangganjun/YuyanSelfOpt/master/images/悬浮键盘.jpg) |
 
 ## 许可证与商业授权声明
 本分支从 5.0.0 起使用 `native/` 中的自有 JNI 与固定版本的开源 librime，构建产物为 `libselfopt_rime.so`。旧 `libs/` 下的 `libyuyanime.so` 不再参与打包。以下闭源库授权说明保留作为原项目的历史声明，不适用于本分支自行实现的 JNI；所使用开源依赖的原始许可证随生成的词库包分发。
