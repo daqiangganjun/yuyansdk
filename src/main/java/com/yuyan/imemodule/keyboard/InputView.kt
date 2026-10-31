@@ -83,6 +83,9 @@ import kotlin.math.absoluteValue
  */
 @SuppressLint("ViewConstructor")
 class InputView(context: Context, private val service: ImeService) : LifecycleRelativeLayout(context), IResponseKeyEvent {
+    fun startVoiceInput() = service.startVoiceInput()
+    fun finishVoiceInput() = service.finishVoiceInput()
+    fun cancelVoiceInput() = service.cancelVoiceInput()
     private val appPrefs = getInstance()
     private val clipboardItemTimeout = appPrefs.clipboard.clipboardItemTimeout.getValue()
     private var chinesePrediction = true
@@ -529,6 +532,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     override fun responseKeyEvent(sKey: SoftKey) {
+        service.cancelVoiceInput()
         val keyCode = sKey.code
         if(sKey.isUserDefKey)processUserDefKey(keyCode, sKey.keyLabel)
         else if(sKey.isUniStrKey){

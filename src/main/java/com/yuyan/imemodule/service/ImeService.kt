@@ -28,6 +28,7 @@ import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
+import com.yuyan.imemodule.speech.VoiceInputController
 import com.yuyan.imemodule.utils.KeyboardLoaderUtil
 import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.utils.StringUtils
@@ -46,6 +47,18 @@ import splitties.bitflags.hasFlag
  * Main class of the Pinyin input method. 输入法服务
  */
 class ImeService : InputMethodService() {
+    private var voiceInput: VoiceInputController? = null
+
+    fun startVoiceInput() {
+        val view = mInputView ?: return
+        if (voiceInput == null) {
+            voiceInput = VoiceInputController(this, view.mSkbRoot) { view.resetToIdleState() }
+        }
+        voiceInput?.start()
+    }
+
+    fun finishVoiceInput() { voiceInput?.finish() }
+    fun cancelVoiceInput() { voiceInput?.cancel() }
     private var isHardwareKeyboard = false
     private var isSoftKeyboard = false
     // 视图由系统按需创建，键盘事件可能早于视图创建到达，故使用可空类型统一防护
@@ -73,6 +86,8 @@ class ImeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        voiceInput?.cancel()
+        voiceInput = null
         return InputView(baseContext, this).also { mInputView = it }
     }
 
@@ -88,6 +103,7 @@ class ImeService : InputMethodService() {
     }
 
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
+        cancelVoiceInput()
         YuyanEmojiCompat.setEditorInfo(editorInfo)
         handleHardwareKeyboard()
         if (isHardwareKeyboard)mCandidateView?.onStartInput(editorInfo, restarting)
@@ -104,6 +120,7 @@ class ImeService : InputMethodService() {
      * 其中残留的编辑框内容还会跨应用留存。
      */
     override fun onFinishInput() {
+        cancelVoiceInput()
         // 离开输入框时落定尚未确定的手写文本，否则其状态会残留到下一个输入框
         mInputView?.finishHandwritingComposing()
         DecodingInfo.reset()
@@ -113,6 +130,8 @@ class ImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        voiceInput?.cancel()
+        voiceInput = null
         super.onDestroy()
         removeOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.unregisterOnChangeListener(clipboardUpdateContentListener)
@@ -133,6 +152,7 @@ class ImeService : InputMethodService() {
     private var reloadKeyboardJob: Job? = null
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        cancelVoiceInput()
         super.onConfigurationChanged(newConfig)
         handleHardwareKeyboard(newConfig)
         // 连续旋转时只保留最后一次重建，否则会叠加多次全量重建
@@ -228,6 +248,7 @@ class ImeService : InputMethodService() {
     }
 
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
+        if (oldSelStart != newSelStart || oldSelEnd != newSelEnd) cancelVoiceInput()
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (isSoftKeyboard) mInputView?.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesEnd)
     }
@@ -251,6 +272,7 @@ class ImeService : InputMethodService() {
     }
 
     override fun onWindowHidden() {
+        cancelVoiceInput()
         if(isSoftKeyboard) mInputView?.onWindowHidden()
         super.onWindowHidden()
     }

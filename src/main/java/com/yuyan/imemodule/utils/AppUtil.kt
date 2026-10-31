@@ -45,6 +45,9 @@ object AppUtil {
     fun launchSettingsToHandwriting(context: Context) =
         launchMainToDest(context, R.id.handwritingSettingsFragment)
 
+    fun launchSettingsToVoice(context: Context) =
+        launchMainToDest(context, R.id.voiceSettingsFragment)
+
 
     fun launchSettingsToKeyboard(context: Context) =
         launchMainToDest(context, R.id.keyboardFeedbackFragment)

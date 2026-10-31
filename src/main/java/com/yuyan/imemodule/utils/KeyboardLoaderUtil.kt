@@ -71,7 +71,7 @@ class KeyboardLoaderUtil private constructor() {
                 keyBeans = LinkedList()
                 qwertyKeys = createQwertyPYKeys(keys[1])
                 qwertyKeys.first().apply {
-                    mLeftF = 0.06f
+                    mLeftF = (1f - qwertyKeys.sumOf { it.widthF.toDouble() }.toFloat()) / 2f
                 }
                 keyBeans.addAll(qwertyKeys)
                 rows.add(keyBeans)
@@ -149,7 +149,7 @@ class KeyboardLoaderUtil private constructor() {
                 keyBeans = LinkedList()
                 qwertyKeys = createQwertyKeys(keys[1])
                 qwertyKeys.first().apply {
-                    mLeftF = 0.06f
+                    mLeftF = (1f - qwertyKeys.sumOf { it.widthF.toDouble() }.toFloat()) / 2f
                 }
                 keyBeans.addAll(qwertyKeys)
                 rows.add(keyBeans)

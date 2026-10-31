@@ -40,6 +40,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     private var mGestureDetector: GestureDetector? = null
     protected var mLongPressKey = false
     private var mAbortKey = false
+    private var voicePress = false
     private var mHandler: Handler? = null
     protected var mDrawPending = false
     protected var mService: InputView? = null
@@ -72,6 +73,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
         if (mGestureDetector == null) {
             mGestureDetector = GestureDetector(context, object : SimpleOnGestureListener() {
                 override fun onScroll(downEvent: MotionEvent?, currentEvent: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                    if (voicePress) return true
                     if(mLongPressKey && mCurrentKey?.getkeyLabel()?.isNotBlank() == true){
                         popupComponent.changeFocus(currentEvent.x - downEvent!!.x, currentEvent.y - downEvent.y)
                     } else {
@@ -116,6 +118,13 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     private fun openPopupIfRequired() {
         if(mCurrentKey != null) {
             val softKey = mCurrentKey!!
+            if (softKey.code == KeyEvent.KEYCODE_SPACE) {
+                voicePress = true
+                mAbortKey = true
+                popupComponent.dismissPopup()
+                mService?.startVoiceInput()
+                return
+            }
             val keyboardSymbol = ThemeManager.prefs.keyboardSymbol.getValue()
             if (softKey.getkeyLabel().isNotBlank() && softKey.code != InputModeSwitcher.USER_KEYCODE_COMMA_EMOJI ) {
                 val keyLabel = if (InputModeSwitcher.isLower) softKey.keyLabel.lowercase() else softKey.keyLabel
@@ -201,6 +210,10 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                if (voicePress) {
+                    voicePress = false
+                    mService?.finishVoiceInput()
+                }
                 mCurrentKey?.onReleased()
                 mCurrentKey = getKeyIndices(me.x.toInt(), me.y.toInt())
                 removeMessages()
@@ -211,6 +224,10 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
                 currentDistanceY = 0F
             }
             MotionEvent.ACTION_CANCEL -> {
+                if (voicePress) {
+                    voicePress = false
+                    mService?.cancelVoiceInput()
+                }
                 removeMessages()
                 currentDistanceX = 0F
                 currentDistanceY = 0F
@@ -363,6 +380,10 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     }
 
     open fun closing() {
+        if (voicePress) {
+            voicePress = false
+            mService?.cancelVoiceInput()
+        }
         removeMessages()
         // 未配对到 UP 的按下事件需归还对象池
         while (!motionEventQueue.isEmpty()) {
