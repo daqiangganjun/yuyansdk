@@ -102,8 +102,9 @@ object StringUtils {
     /**
      * 字符串转花漾字
      */
-    fun converted2FlowerTypeface(src: String): String {
-         return  when(CustomConstant.flowerTypeface) {
+    fun converted2FlowerTypeface(src: String, mode: FlowerTypefaceMode = CustomConstant.flowerTypeface): String {
+         if (src.isEmpty()) return src
+         return when(mode) {
              FlowerTypefaceMode.Disabled -> {
                  src
              }

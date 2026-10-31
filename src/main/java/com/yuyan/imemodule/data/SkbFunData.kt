@@ -6,6 +6,8 @@ import com.yuyan.imemodule.entity.SkbFunItem
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 
 val menuSkbFunsPreset: Map<SkbMenuMode, SkbFunItem> = hashMapOf(
+    SkbMenuMode.TerminalMode to SkbFunItem(Launcher.instance.context.getString(R.string.terminal_mode), R.drawable.ic_menu_terminal, SkbMenuMode.TerminalMode),
+    SkbMenuMode.TextTransform to SkbFunItem(Launcher.instance.context.getString(R.string.text_transform_panel), R.drawable.ic_menu_flower, SkbMenuMode.TextTransform),
     SkbMenuMode.Emojicon to SkbFunItem(Launcher.instance.context.getString(R.string.emoji_setting), R.drawable.ic_menu_emoji, SkbMenuMode.Emojicon),
     SkbMenuMode.SwitchKeyboard to SkbFunItem(Launcher.instance.context.getString(R.string.changeKeyboard), R.drawable.ic_menu_keyboard, SkbMenuMode.SwitchKeyboard),
     SkbMenuMode.KeyboardHeight to SkbFunItem(Launcher.instance.context.getString(R.string.setting_ime_keyboard_height), R.drawable.ic_menu_height, SkbMenuMode.KeyboardHeight),

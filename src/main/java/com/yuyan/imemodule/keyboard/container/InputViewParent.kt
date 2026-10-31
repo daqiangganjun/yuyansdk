@@ -15,6 +15,12 @@ import android.widget.RelativeLayout
  */
 class InputViewParent @JvmOverloads constructor(context: Context?, attrs: AttributeSet? = null, defStyleAttr: Int = 0, defStyleRes: Int = 0) : RelativeLayout(context, attrs, defStyleAttr, defStyleRes) {
     private var mLastContainer: View? = null
+
+    fun clearViews() {
+        removeAllViews()
+        mLastContainer = null
+    }
+
     fun showView(child: View?) {
         if (child == null) return
         (child as? InputBaseContainer)?.updateStates()

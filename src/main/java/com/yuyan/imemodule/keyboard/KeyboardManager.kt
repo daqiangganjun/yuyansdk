@@ -41,6 +41,8 @@ class KeyboardManager {
 
     fun clearKeyboard() {
         keyboards.clear()
+        mKeyboardRootView?.clearViews()
+        currentContainer = null
         mInputView?.let { it.initView(it.context) }
     }
 

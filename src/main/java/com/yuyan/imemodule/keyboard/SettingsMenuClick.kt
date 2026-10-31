@@ -19,6 +19,8 @@ import com.yuyan.inputmethod.core.Kernel
 
 fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
     when (skbMenuMode) {
+        SkbMenuMode.TerminalMode -> inputView.toggleTerminalMode()
+        SkbMenuMode.TextTransform -> inputView.openTextTransformPanel()
         SkbMenuMode.Emojicon, SkbMenuMode.Emoticon -> {
             val symbolType = if(skbMenuMode == SkbMenuMode.Emoticon) SymbolMode.Emoticon else SymbolMode.Emojicon
             if((KeyboardManager.instance.currentContainer as? SymbolContainer)?.getMenuMode() == symbolType){
@@ -30,8 +32,14 @@ fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
             }
         }
         SkbMenuMode.SwitchKeyboard -> {
-            KeyboardManager.instance.switchKeyboard(KeyboardManager.KeyboardType.SETTINGS)
-            (KeyboardManager.instance.currentContainer as? SettingsContainer)?.showSkbSelelctModeView()
+            val currentContainer = KeyboardManager.instance.currentContainer as? SettingsContainer
+            if (currentContainer?.isKeyboardSelectionVisible == true) {
+                KeyboardManager.instance.switchKeyboard()
+            } else {
+                KeyboardManager.instance.switchKeyboard(KeyboardManager.KeyboardType.SETTINGS)
+                (KeyboardManager.instance.currentContainer as? SettingsContainer)?.showSkbSelelctModeView()
+                inputView.updateCandidateBar()
+            }
         }
         SkbMenuMode.KeyboardHeight -> {
             KeyboardManager.instance.switchKeyboard()

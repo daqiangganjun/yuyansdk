@@ -194,6 +194,29 @@ object InputModeSwitcher {
      */
     private var mRecentLauageInputMode = MODE_UNSET
 
+    var isTerminalMode = false
+        private set
+    private var modeBeforeTerminal = MODE_UNSET
+    private var recentModeBeforeTerminal = MODE_UNSET
+
+    fun setTerminalMode(enabled: Boolean) {
+        if (isTerminalMode == enabled) return
+        if (enabled) {
+            modeBeforeTerminal = mInputMode
+            recentModeBeforeTerminal = mRecentLauageInputMode
+        }
+        isTerminalMode = enabled
+        fun restoreChineseMode(mode: Int): Int =
+            if (mode == MODE_UNSET || mode and MASK_LANGUAGE == MASK_LANGUAGE_CN)
+                getInstance().internal.inputMethodPinyinMode.getValue() else mode
+        saveInputMode(if (enabled) MODE_SKB_ENGLISH_LOWER else
+            restoreChineseMode(modeBeforeTerminal))
+        if (!enabled) mRecentLauageInputMode = restoreChineseMode(recentModeBeforeTerminal)
+        KeyboardLoaderUtil.instance.clearKeyboardMap()
+        KeyboardManager.instance.clearKeyboard()
+        KeyboardManager.instance.switchKeyboard()
+    }
+
 	@JvmField
 	val mToggleStates = ToggleStates()
 
@@ -221,7 +244,9 @@ object InputModeSwitcher {
             EditorInfo.TYPE_CLASS_NUMBER, EditorInfo.TYPE_CLASS_PHONE, EditorInfo.TYPE_CLASS_DATETIME -> newInputMode = MASK_SKB_LAYOUT_NUMBER
             else -> {
                 val v = editorInfo.inputType and EditorInfo.TYPE_MASK_VARIATION
-                newInputMode = if (v == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS || v == EditorInfo.TYPE_TEXT_VARIATION_PASSWORD
+                newInputMode = if (isTerminalMode) {
+                    if (isChinese) getInstance().internal.inputMethodPinyinMode.getValue() else MODE_SKB_ENGLISH_LOWER
+                } else if (v == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS || v == EditorInfo.TYPE_TEXT_VARIATION_PASSWORD
                     || v == EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD || v == EditorInfo.TYPE_TEXT_VARIATION_WEB_PASSWORD) {
                     MODE_SKB_ENGLISH_LOWER
                 } else if(getInstance().keyboardSetting.keyboardLockEnglish.getValue()){
@@ -334,16 +359,13 @@ object InputModeSwitcher {
      */
     fun saveInputMode(newInputMode: Int) {
         mInputMode = newInputMode // 设置新的输入法模式为当前的输入法模式
-        if (isEnglish) {
-            Kernel.initImeSchema(CustomConstant.SCHEMA_EN)
-        } else {
-            Kernel.initImeSchema(getInstance().internal.pinyinModeRime.getValue())
-        }
+        if (!(isEnglish && isTerminalMode)) Kernel.initImeSchema(
+            if (isEnglish) CustomConstant.SCHEMA_EN else getInstance().internal.pinyinModeRime.getValue())
         if (isChinese || isEnglish) {
             mRecentLauageInputMode = mInputMode
-            getInstance().internal.inputDefaultMode.setValue(mInputMode)
+            if (!isTerminalMode) getInstance().internal.inputDefaultMode.setValue(mInputMode)
         }
-        mToggleStates.modifiers = when(Kernel.getCurrentRimeSchema()) {
+        mToggleStates.modifiers = if (isTerminalMode && isEnglish) MASK_CASE_LOWER else when(Kernel.getCurrentRimeSchema()) {
             CustomConstant.SCHEMA_ZH_T9, CustomConstant.SCHEMA_ZH_STROKE, CustomConstant.SCHEMA_ZH_DOUBLE_LX17 -> KeyEvent.META_CAPS_LOCK_ON
             else -> MASK_CASE_LOWER
         }
@@ -365,6 +387,9 @@ object InputModeSwitcher {
     fun reset( ) {
         mInputMode = MODE_UNSET
         mRecentLauageInputMode = MODE_UNSET
+        isTerminalMode = false
+        modeBeforeTerminal = MODE_UNSET
+        recentModeBeforeTerminal = MODE_UNSET
     }
 
 }

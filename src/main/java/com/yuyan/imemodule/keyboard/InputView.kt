@@ -49,6 +49,7 @@ import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.keyboard.container.HandwritingContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
+import com.yuyan.imemodule.keyboard.terminal.TerminalInputDispatcher
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
 import com.yuyan.imemodule.prefs.behavior.KeyboardOneHandedMod
@@ -64,6 +65,8 @@ import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.view.CandidatesBar
 import com.yuyan.imemodule.view.EditPhrasesView
 import com.yuyan.imemodule.view.FullDisplayKeyboardBar
+import com.yuyan.imemodule.view.KeyboardAuxiliaryPanel
+import com.yuyan.imemodule.utils.clipboardManager
 import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import com.yuyan.imemodule.view.widget.LifecycleRelativeLayout
@@ -87,6 +90,48 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun finishVoiceInput() = service.finishVoiceInput()
     fun cancelVoiceInput() = service.cancelVoiceInput()
     private val appPrefs = getInstance()
+    lateinit var auxiliaryPanel: KeyboardAuxiliaryPanel
+        private set
+    val terminalInput = TerminalInputDispatcher(
+        { service.activeInputConnection },
+        { if (::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing) null else service.currentInputEditorInfo },
+    ) { if (::auxiliaryPanel.isInitialized) auxiliaryPanel.refresh() }
+
+    val localInputConnection get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputConnection else null
+    val isTransformingText get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
+    val isTerminalTarget get() = !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
+
+    fun prepareAuxiliaryAction() {
+        service.cancelVoiceInput()
+        commitPendingCandidate()
+    }
+
+    fun toggleTerminalMode() {
+        prepareAuxiliaryAction()
+        auxiliaryPanel.closeEditor(true)
+        terminalInput.modifiers.clear()
+        hasSelection = false
+        hasSelectionAll = false
+        InputModeSwitcher.setTerminalMode(!InputModeSwitcher.isTerminalMode)
+        auxiliaryPanel.refresh()
+        updateCandidateBar()
+    }
+
+    fun openTextTransformPanel() {
+        if (isAddPhrases) return
+        KeyboardManager.instance.switchKeyboard()
+        auxiliaryPanel.openEditor()
+    }
+
+    fun finishAuxiliaryInput() {
+        if (::auxiliaryPanel.isInitialized) auxiliaryPanel.finishInput()
+    }
+
+    fun pasteTerminalText(nativePaste: Boolean = true) {
+        val clip = context.clipboardManager.primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        terminalInput.paste(text, nativePaste)
+    }
     private val clipboardItemTimeout = appPrefs.clipboard.clipboardItemTimeout.getValue()
     private var chinesePrediction = true
     var isAddPhrases = false
@@ -167,6 +212,9 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         mInputKeyboardContainer = mSkbRoot.findViewById(R.id.ll_input_keyboard_container)
         mAddPhrasesLayout = EditPhrasesView(context)
         mLlKeyboardBottomHolder = mSkbRoot.findViewById(R.id.iv_keyboard_holder)
+        auxiliaryPanel = KeyboardAuxiliaryPanel(context, service, terminalInput,
+            { prepareAuxiliaryAction() }, { toggleTerminalMode() }, { pasteTerminalText(it) })
+        mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_auxiliary_panel).addView(auxiliaryPanel)
         initSystemBars()
         KeyboardManager.instance.setData(mSkbRoot.findViewById(R.id.skb_input_keyboard_view), this)
         PopupComponent.get().root.let { root ->
@@ -336,6 +384,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun updateTheme() {
+        auxiliaryPanel.updateTheme()
         // 本身不绘制内容，设为 null 比铺一层透明色少一次无效绘制
         background = null
         val activeTheme = ThemeManager.activeTheme
@@ -541,7 +590,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 if (SymbolPreset.containsKey(it)) commitPairSymbol(it) else commitText(it)
             }
         } else {
-            val metaState = when(Kernel.getCurrentRimeSchema()) {
+            val metaState = if (InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) InputModeSwitcher.mToggleStates.modifiers else when(Kernel.getCurrentRimeSchema()) {
                 CustomConstant.SCHEMA_ZH_T9, CustomConstant.SCHEMA_ZH_STROKE, CustomConstant.SCHEMA_ZH_DOUBLE_LX17 -> KeyEvent.META_CAPS_LOCK_ON
                 else -> InputModeSwitcher.mToggleStates.modifiers
             }
@@ -563,7 +612,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun processKeyUp(event: KeyEvent): Boolean {
         // 系统按键（返回键等）一律交由 InputMethodService 基类处理，以保持 DOWN/UP 消费状态一致
         if(event.isSystem) return false
-        else if(isFunctionKey(event.keyCode)){
+        if (!isAddPhrases && InputModeSwitcher.isTerminalMode &&
+            (InputModeSwitcher.isEnglish || terminalInput.modifiers.metaState != 0)) {
+            return processTerminalKey(event)
+        }
+        if(isFunctionKey(event.keyCode)){
             processFunctionKey(event)
             return true
         }
@@ -576,6 +629,26 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             else -> processEnglishKey(event)
         }
 //        return if(appPrefs.input.abcSearchEnglishCell.getValue() || InputModeSwitcherManager.isChinese)processInput(event) else processEnglishKey(event)
+    }
+
+    private fun processTerminalKey(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || event.keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) {
+            InputModeSwitcher.processShiftKey(event.keyCode)
+            return true
+        }
+        prepareAuxiliaryAction()
+        val keyCode = event.keyCode
+        val handled = when {
+            event.isCtrlPressed || event.isAltPressed -> terminalInput.sendKey(keyCode, event.metaState)
+            keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT ||
+                keyCode in listOf(KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL,
+                    KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END,
+                    KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN) -> terminalInput.sendKey(keyCode, event.metaState)
+            event.unicodeChar != 0 -> terminalInput.sendText(String(Character.toChars(event.unicodeChar)))
+            else -> terminalInput.sendKey(keyCode, event.metaState)
+        }
+        InputModeSwitcher.resetCharCase()
+        return handled
     }
 
     private fun processEnglishKey(event: KeyEvent): Boolean {
@@ -653,7 +726,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 (KeyboardManager.instance.currentContainer as? SymbolContainer)?.setSymbolsView()
             }
             InputModeSwitcher.USER_KEYCODE_EMOJI -> onSettingsMenuClick(SkbMenuMode.Emojicon)
-            in InputModeSwitcher.USER_KEYCODE_RETURN..InputModeSwitcher.USER_KEYCODE_LANG -> InputModeSwitcher.switchModeForUserKey(keyCode)
+            in InputModeSwitcher.USER_KEYCODE_RETURN..InputModeSwitcher.USER_KEYCODE_LANG -> {
+                terminalInput.modifiers.clear()
+                InputModeSwitcher.switchModeForUserKey(keyCode)
+            }
+            InputModeSwitcher.USER_KEYCODE_PASTE -> {
+                if (isTerminalTarget) pasteTerminalText() else commitTextEditMenu(android.R.id.paste)
+            }
             in InputModeSwitcher.USER_KEYCODE_PASTE..InputModeSwitcher.USER_KEYCODE_CUT -> commitTextEditMenu(KeyPreset.textEditMenuPreset[keyCode])
             // 行首/行末交给应用按标准按键处理：它会把光标滚进可视区域，长文本才不会
             // 停在看不见的地方。原先「先全选再发方向键」的做法会闪一下全选高亮
@@ -787,7 +866,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         handwritingComposing = text
         handwritingReading = PolyphoneReading.of(text).takeIf(String::isNotEmpty)
         // setComposingText 不经过 ImeService.commitText，花漾字转换需在此补上
-        service.setComposingText(StringUtils.converted2FlowerTypeface(text))
+        service.setComposingText(if (isTransformingText || InputModeSwitcher.isTerminalMode) text else StringUtils.converted2FlowerTypeface(text))
         updateComposingBubble()
     }
 
@@ -875,6 +954,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun updateCandidateBar() {
+        if (::auxiliaryPanel.isInitialized) auxiliaryPanel.refresh()
         updateComposingBubble()
         mSkbCandidatesBarView.scheduleShowCandidates()
     }
@@ -981,6 +1061,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 前后文判断，一并放行。
      */
     private fun isCursorAtEdge(keyCode: Int): Boolean {
+        if (isTerminalTarget) return false
         if (hasSelection) return false
         // 部分输入框（如密码框）会拒绝提供上下文，此时读取失败一律放行，
         // 宁可保持原有行为也不要误判成边界而卡住光标
@@ -1036,6 +1117,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 onSettingsMenuClick(SkbMenuMode.Phrases)
             }
         } else {
+            if (isTerminalTarget || isTransformingText) {
+                terminalInput.sendKey(keyCode, if (hasSelection) KeyEvent.META_SHIFT_ON else 0)
+                return
+            }
             when (keyCode) {
                 KeyEvent.KEYCODE_ENTER -> service.sendEnterKeyEvent()
                 in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -1067,16 +1152,24 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     // 花漾字转换统一在 ImeService.commitText 中进行，此处不可重复转换
     private fun commitText(text: String) {
         if (isAddPhrases) mAddPhrasesLayout.commitText(text)
+        else if (InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
         else service.commitText(text)
     }
 
     private fun commitPairSymbol(text: String) {
+        if (InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish && !isAddPhrases) {
+            terminalInput.sendText(text)
+            return
+        }
         if (isAddPhrases) {
             mAddPhrasesLayout.commitText(text)
         } else {
             if (appPrefs.input.symbolPairInput.getValue()) {
+                val target = service.activeInputConnection
                 service.commitText(text + SymbolPreset[text]!!)
-                postDelayed(300) { service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT) }
+                postDelayed(300) {
+                    if (service.activeInputConnection === target) service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
+                }
             } else {
                 service.commitText(text)
             }
@@ -1130,6 +1223,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        if (!restarting) terminalInput.modifiers.clear()
         InputModeSwitcher.requestInputWithSkb(editorInfo)
         if (!restarting) {
             resetToIdleState()
@@ -1153,6 +1247,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onWindowHidden() {
+        finishAuxiliaryInput()
         if (isAddPhrases) {
             isAddPhrases = false
             mAddPhrasesLayout.addPhrasesHandle()
@@ -1167,6 +1262,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private var oldCandidatesEnd = 0
 
     fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesEnd: Int) {
+        if (isTransformingText) {
+            auxiliaryPanel.onHostSelectionChanged(candidatesEnd)
+            return
+        }
         selStart = newSelStart
         selEnd = newSelEnd
         if (InputModeSwitcher.isEnglish ) {

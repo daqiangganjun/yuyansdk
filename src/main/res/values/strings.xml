@@ -23,6 +23,8 @@
     <string name="keyboard_font_bold">键盘字体加粗</string>
     <string name="keyboard_font_size">键盘字体大小</string>
     <string name="changeKeyboard">切换键盘</string>
+    <string name="terminal_mode">终端模式</string>
+    <string name="text_transform_panel">转换面板</string>
     <string name="chinese_input_setting">中文输入</string>
     <string name="search_english_cell">英文单词补全</string>
     <string name="setting_jian_fan">繁体输入</string>

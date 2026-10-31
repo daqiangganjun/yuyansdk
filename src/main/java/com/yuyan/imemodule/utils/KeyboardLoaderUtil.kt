@@ -496,7 +496,12 @@ class KeyboardLoaderUtil private constructor() {
         val keyPreset = KeyPreset.qwertyKeyNumberPreset
         for(code in codes){
             val labels = keyPreset[code]
-            softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = labels?.getOrNull(1) ?: "", keyMnemonic = labels?.getOrNull(2) ?: "").apply {
+            val smallLabel = if (InputModeSwitcher.isTerminalMode) when (code) {
+                KeyEvent.KEYCODE_H -> "\""
+                KeyEvent.KEYCODE_J -> "'"
+                else -> labels?.getOrNull(1).orEmpty()
+            } else labels?.getOrNull(1).orEmpty()
+            softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "", labelSmall = smallLabel, keyMnemonic = labels?.getOrNull(2) ?: "").apply {
                 widthF = 0.099f
             })
         }

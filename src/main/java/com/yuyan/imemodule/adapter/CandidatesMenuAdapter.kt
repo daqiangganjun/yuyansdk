@@ -107,6 +107,7 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
             SkbMenuMode.PinyinStroke -> rimeValue == CustomConstant.SCHEMA_ZH_STROKE
             SkbMenuMode.LockClipBoard -> CustomConstant.lockClipBoardEnable
             SkbMenuMode.TextEdit -> InputModeSwitcher.isTextEditSkb
+            SkbMenuMode.TerminalMode -> InputModeSwitcher.isTerminalMode
             else -> false
         }
         return result

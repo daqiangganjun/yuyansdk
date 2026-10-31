@@ -63,6 +63,8 @@ class ImeService : InputMethodService() {
     private var isSoftKeyboard = false
     // 视图由系统按需创建，键盘事件可能早于视图创建到达，故使用可空类型统一防护
     private var mInputView: InputView? = null
+    val activeInputConnection: InputConnection?
+        get() = mInputView?.localInputConnection ?: currentInputConnection
     private var mCandidateView: CandidateView? = null
     private val onThemeChangeListener = OnThemeChangeListener { _: Theme? -> if (isHardwareKeyboard) mCandidateView?.updateTheme() else mInputView?.updateTheme()}
     private val clipboardUpdateContent = getInstance().internal.clipboardUpdateContent
@@ -86,6 +88,7 @@ class ImeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        mInputView?.finishAuxiliaryInput()
         voiceInput?.cancel()
         voiceInput = null
         return InputView(baseContext, this).also { mInputView = it }
@@ -104,6 +107,7 @@ class ImeService : InputMethodService() {
 
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         cancelVoiceInput()
+        mInputView?.finishAuxiliaryInput()
         YuyanEmojiCompat.setEditorInfo(editorInfo)
         handleHardwareKeyboard()
         if (isHardwareKeyboard)mCandidateView?.onStartInput(editorInfo, restarting)
@@ -123,6 +127,7 @@ class ImeService : InputMethodService() {
         cancelVoiceInput()
         // 离开输入框时落定尚未确定的手写文本，否则其状态会残留到下一个输入框
         mInputView?.finishHandwritingComposing()
+        mInputView?.finishAuxiliaryInput()
         DecodingInfo.reset()
         YuyanEmojiCompat.setEditorInfo(null)
         mInputView?.clearTextBeforeCursors()
@@ -130,6 +135,7 @@ class ImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        mInputView?.finishAuxiliaryInput()
         voiceInput?.cancel()
         voiceInput = null
         super.onDestroy()
@@ -281,6 +287,10 @@ class ImeService : InputMethodService() {
      * 模拟Enter按键点击
      */
     fun sendEnterKeyEvent() {
+        if (mInputView?.isTransformingText == true) {
+            activeInputConnection?.commitText("\n", 1)
+            return
+        }
         val inputConnection = getCurrentInputConnection()
         YuyanEmojiCompat.mEditorInfo?.run {
             if (inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL || imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)) {
@@ -311,14 +321,14 @@ class ImeService : InputMethodService() {
     }
 
     fun sendDownKeyEvent(eventTime: Long, keyEventCode: Int, metaState: Int = 0) {
-        currentInputConnection?.sendKeyEvent(
+        activeInputConnection?.sendKeyEvent(
             KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, keyEventCode, 0, metaState,
                 KeyCharacterMap.VIRTUAL_KEYBOARD, keyEventCode, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE)
         )
     }
 
     fun sendUpKeyEvent(eventTime: Long, keyEventCode: Int, metaState: Int = 0) {
-        currentInputConnection.sendKeyEvent(
+        activeInputConnection?.sendKeyEvent(
             KeyEvent(eventTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, keyEventCode, 0, metaState,
                 KeyCharacterMap.VIRTUAL_KEYBOARD, keyEventCode, KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE)
         )
@@ -328,7 +338,7 @@ class ImeService : InputMethodService() {
      * 向输入框提交预选词
      */
     fun setComposingText(text: CharSequence) {
-        currentInputConnection.setComposingText(text, 1)
+        activeInputConnection?.setComposingText(text, 1)
     }
 
 
@@ -337,45 +347,49 @@ class ImeService : InputMethodService() {
      */
     fun finishComposingText() {
         // onFinishInput 等时机下连接可能已断开
-        currentInputConnection?.finishComposingText()
+        activeInputConnection?.finishComposingText()
     }
 
     /**
      * 发送字符串给编辑框
      */
     fun commitText(text: String) {
-        currentInputConnection.commitText(StringUtils.converted2FlowerTypeface(text), 1)
+        activeInputConnection?.commitText(convertInputText(text), 1)
     }
 
     /**
      * 发送字符串给编辑框
      */
     fun commitText(text: String, newCursorPosition: Int) {
-        currentInputConnection.commitText(StringUtils.converted2FlowerTypeface(text), newCursorPosition)
+        activeInputConnection?.commitText(convertInputText(text), newCursorPosition)
     }
 
+    private fun convertInputText(text: String): String =
+        if (InputModeSwitcher.isTerminalMode || mInputView?.isTransformingText == true) text
+        else StringUtils.converted2FlowerTypeface(text)
+
     fun getTextBeforeCursor(length:Int) : String {
-        return currentInputConnection.getTextBeforeCursor(length, 0).toString()
+        return activeInputConnection?.getTextBeforeCursor(length, 0)?.toString().orEmpty()
     }
 
     fun getTextAfterCursor(length:Int) : String {
-        return currentInputConnection?.getTextAfterCursor(length, 0)?.toString() ?: ""
+        return activeInputConnection?.getTextAfterCursor(length, 0)?.toString() ?: ""
     }
 
     fun commitTextEditMenu(id:Int) {
-        currentInputConnection.performContextMenuAction(id)
+        activeInputConnection?.performContextMenuAction(id)
     }
 
     fun performEditorAction(editorAction:Int) {
-        currentInputConnection.performEditorAction(editorAction)
+        activeInputConnection?.performEditorAction(editorAction)
     }
 
     fun deleteSurroundingText(length:Int) {
-        currentInputConnection.deleteSurroundingText(length, 0)
+        activeInputConnection?.deleteSurroundingText(length, 0)
     }
 
     fun setSelection(start: Int, end: Int) {
-        currentInputConnection.setSelection(start, end)
+        activeInputConnection?.setSelection(start, end)
     }
 
     /**
@@ -385,7 +399,7 @@ class ImeService : InputMethodService() {
      * 密码框一类会拒绝提供上下文，此时返回 -1 由调用方回落。
      */
     fun getAllTextLength(): Int = runCatching {
-        currentInputConnection.getExtractedText(ExtractedTextRequest(), 0)?.text?.length ?: -1
+        activeInputConnection?.getExtractedText(ExtractedTextRequest(), 0)?.text?.length ?: -1
     }.getOrDefault(-1)
 
     fun handleHardwareKeyboard(newConfig: Configuration? = null) {

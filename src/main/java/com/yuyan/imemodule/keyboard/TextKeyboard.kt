@@ -77,9 +77,9 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      */
     fun updateStates() {
         val enterKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_ENTER) as? SoftKeyToggle
-        val enterChanged = enterKey?.enableToggleState( if(mService!!.isAddPhrases)4 else InputModeSwitcher.mToggleStates.imeAction) == true
+        val enterChanged = enterKey?.enableToggleState(if (mService!!.isAddPhrases) 4 else if (InputModeSwitcher.isTerminalMode) 0 else InputModeSwitcher.mToggleStates.imeAction) == true
         val shiftKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_SHIFT_LEFT) as? SoftKeyToggle
-        val isEnglishCell = AppPrefs.getInstance().input.abcSearchEnglishCell.getValue()
+        val isEnglishCell = AppPrefs.getInstance().input.abcSearchEnglishCell.getValue() && !InputModeSwitcher.isTerminalMode
         val shiftChanged = shiftKey?.enableToggleState(InputModeSwitcher.mToggleStates.modifiers + if(isEnglishCell) 3 else 0) == true
         // 无论哪种情况都不必重新测量整棵视图树：onMeasure 的结果只取决于 EnvironmentSingleton。
         // Shift 会切换全部字母键的大小写显示，故需整块重绘；仅回车键变化时只重绘该键。
