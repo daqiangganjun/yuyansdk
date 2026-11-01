@@ -8,6 +8,9 @@ import android.os.SystemClock
 import android.text.InputType
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.Window
+import android.view.WindowManager
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
@@ -31,7 +34,6 @@ import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.speech.VoiceInputController
 import com.yuyan.imemodule.utils.KeyboardLoaderUtil
 import com.yuyan.imemodule.view.popup.PopupComponent
-import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.utils.isDarkMode
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +68,7 @@ class ImeService : InputMethodService() {
     val activeInputConnection: InputConnection?
         get() = mInputView?.localInputConnection ?: currentInputConnection
     private var mCandidateView: CandidateView? = null
+    private var watchedInputWindow: Window? = null
     private val onThemeChangeListener = OnThemeChangeListener { _: Theme? -> if (isHardwareKeyboard) mCandidateView?.updateTheme() else mInputView?.updateTheme()}
     private val clipboardUpdateContent = getInstance().internal.clipboardUpdateContent
     private val clipboardUpdateContentListener = ManagedPreference.OnChangeListener<String> { _, value ->
@@ -88,10 +91,25 @@ class ImeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        watchOutsideTouches()
         mInputView?.finishAuxiliaryInput()
         voiceInput?.cancel()
         voiceInput = null
         return InputView(baseContext, this).also { mInputView = it }
+    }
+
+    private fun watchOutsideTouches() {
+        val inputWindow = window?.window ?: return
+        if (watchedInputWindow === inputWindow) return
+        val original = inputWindow.callback ?: return
+        inputWindow.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
+        inputWindow.callback = object : Window.Callback by original {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) mInputView?.onExternalEditorTouch()
+                return original.dispatchTouchEvent(event)
+            }
+        }
+        watchedInputWindow = inputWindow
     }
 
     override fun onCreateCandidatesView(): View {
@@ -107,11 +125,23 @@ class ImeService : InputMethodService() {
 
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         cancelVoiceInput()
+        val view = mInputView
+        val resumeFlowerInput = restarting && view?.wantsFlowerSourceInput == true
+        val routeRevision = view?.flowerInputRouteRevision ?: 0L
+        if (resumeFlowerInput) view?.resetToIdleState()
         mInputView?.finishAuxiliaryInput()
         YuyanEmojiCompat.setEditorInfo(editorInfo)
         handleHardwareKeyboard()
         if (isHardwareKeyboard)mCandidateView?.onStartInput(editorInfo, restarting)
         super.onStartInput(editorInfo, restarting)
+        if (resumeFlowerInput && view != null) {
+            val target = currentInputConnection
+            view.post {
+                if (mInputView === view && isInputViewShown && currentInputConnection === target) {
+                    view.resumeFlowerInputAfterRestart(routeRevision)
+                }
+            }
+        }
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
@@ -354,19 +384,15 @@ class ImeService : InputMethodService() {
      * 发送字符串给编辑框
      */
     fun commitText(text: String) {
-        activeInputConnection?.commitText(convertInputText(text), 1)
+        activeInputConnection?.commitText(text, 1)
     }
 
     /**
      * 发送字符串给编辑框
      */
     fun commitText(text: String, newCursorPosition: Int) {
-        activeInputConnection?.commitText(convertInputText(text), newCursorPosition)
+        activeInputConnection?.commitText(text, newCursorPosition)
     }
-
-    private fun convertInputText(text: String): String =
-        if (InputModeSwitcher.isTerminalMode || mInputView?.isTransformingText == true) text
-        else StringUtils.converted2FlowerTypeface(text)
 
     fun getTextBeforeCursor(length:Int) : String {
         return activeInputConnection?.getTextBeforeCursor(length, 0)?.toString().orEmpty()

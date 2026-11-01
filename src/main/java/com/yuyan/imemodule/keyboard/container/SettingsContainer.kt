@@ -203,7 +203,6 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
             )
         )
         val adapter = MenuAdapter(context, funItems)
-        funItems.add(SkbFunItem(mContext.getString(R.string.terminal_mode), R.drawable.ic_menu_terminal, SkbMenuMode.TerminalMode))
         adapter.setOnItemClickLitener { _: RecyclerView.Adapter<*>?, _: View?, position: Int ->
             onKeyboardMenuClick(funItems[position])
         }
@@ -211,10 +210,6 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
     }
 
     private fun onKeyboardMenuClick(data: SkbFunItem) {
-        if (data.skbMenuMode == SkbMenuMode.TerminalMode) {
-            inputView.onSettingsMenuClick(SkbMenuMode.TerminalMode)
-            return
-        }
         val value = when (data.skbMenuMode) {
             SkbMenuMode.Pinyin26Jian -> Pair(InputModeSwitcher.MASK_SKB_LAYOUT_QWERTY_PINYIN, CustomConstant.SCHEMA_ZH_QWERTY)
             SkbMenuMode.PinyinHandWriting -> Pair(InputModeSwitcher.MASK_SKB_LAYOUT_HANDWRITING, CustomConstant.SCHEMA_ZH_HANDWRITING)

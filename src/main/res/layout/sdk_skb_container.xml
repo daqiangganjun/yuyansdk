@@ -20,9 +20,15 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:layout_toEndOf="@+id/ll_skb_holder_layout_left">
+        <LinearLayout
+            android:id="@+id/keyboard_flower_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
         <!--候选词视图，即 键盘顶部分的视图，分情况显示候选词，或者显示顶部操作栏-->
         <com.yuyan.imemodule.view.CandidatesBar
             android:id="@+id/candidates_bar"
+            android:layout_below="@id/keyboard_flower_panel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"/>
         <LinearLayout

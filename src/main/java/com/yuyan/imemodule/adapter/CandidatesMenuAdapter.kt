@@ -21,6 +21,7 @@ import com.yuyan.imemodule.prefs.behavior.SymbolMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
+import com.yuyan.imemodule.keyboard.container.SettingsContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.singleton.EnvironmentSingleton.Companion.instance
@@ -59,6 +60,9 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
 
     override fun onBindViewHolder(holder: SymbolHolder, position: Int) {
         val item = items[position]
+        holder.itemView.tag = item.skbMenuMode
+        holder.itemView.isSelected = isSettingsMenuSelect(item)
+        holder.entranceIconImageView?.contentDescription = item.funName
         holder.entranceIconImageView?.padding = mMenuPadding
         val layoutParams = holder.entranceIconImageView?.layoutParams
         layoutParams?.width = itemHeight
@@ -108,6 +112,7 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
             SkbMenuMode.LockClipBoard -> CustomConstant.lockClipBoardEnable
             SkbMenuMode.TextEdit -> InputModeSwitcher.isTextEditSkb
             SkbMenuMode.TerminalMode -> InputModeSwitcher.isTerminalMode
+            SkbMenuMode.SwitchKeyboard -> (KeyboardManager.instance.currentContainer as? SettingsContainer)?.isKeyboardSelectionVisible == true
             else -> false
         }
         return result

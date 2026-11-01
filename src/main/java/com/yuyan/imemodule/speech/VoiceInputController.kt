@@ -58,7 +58,7 @@ class VoiceInputController(
             AppUtil.launchSettingsToVoice(service)
             return
         }
-        val target = service.currentInputConnection ?: return
+        val target = service.activeInputConnection ?: return
         prepareInput()
         val token = ++generation
         stopRecording.set(false)
@@ -78,7 +78,7 @@ class VoiceInputController(
             override fun onResult(result: SpeechResult) = dispatch(token) {
                 if (result.text.isNotBlank()) preview?.text = result.text
                 if (result.isFinal) {
-                    val stillCurrent = service.currentInputConnection === target
+                    val stillCurrent = service.activeInputConnection === target
                     cancel()
                     if (stillCurrent && result.text.isNotBlank()) target.commitText(result.text, 1)
                     else if (stillCurrent) message("未识别到语音，请重试")

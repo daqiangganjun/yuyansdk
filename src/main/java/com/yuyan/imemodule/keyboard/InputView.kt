@@ -49,6 +49,7 @@ import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.keyboard.container.HandwritingContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
+import com.yuyan.imemodule.keyboard.container.InputBaseContainer
 import com.yuyan.imemodule.keyboard.terminal.TerminalInputDispatcher
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
@@ -99,38 +100,74 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     val localInputConnection get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputConnection else null
     val isTransformingText get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
+    val hasFlowerDraft get() = isTransformingText && auxiliaryPanel.hasDraft
+    val flowerInputRouteRevision get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputRouteRevision else 0L
+    val wantsFlowerSourceInput get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.wantsSourceInput
+    private val hasTerminalModifiers get() = InputModeSwitcher.isTerminalMode && terminalInput.modifiers.metaState != 0
     val isTerminalTarget get() = !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
 
     fun prepareAuxiliaryAction() {
         service.cancelVoiceInput()
-        commitPendingCandidate()
+        if (hasPendingCandidateInput()) commitPendingCandidate()
     }
+
+    private fun hasPendingCandidateInput(): Boolean = handwritingComposing != null ||
+        !DecodingInfo.isAssociate && !DecodingInfo.isCandidatesEmpty && DecodingInfo.getCandidate(0)?.comment != "\uD83D\uDCCB"
 
     fun toggleTerminalMode() {
         prepareAuxiliaryAction()
-        auxiliaryPanel.closeEditor(true)
+        auxiliaryPanel.finishInput()
         terminalInput.modifiers.clear()
         hasSelection = false
         hasSelectionAll = false
         InputModeSwitcher.setTerminalMode(!InputModeSwitcher.isTerminalMode)
-        auxiliaryPanel.refresh()
+        auxiliaryPanel.onStartInput(restarting = true)
         updateCandidateBar()
     }
 
-    fun openTextTransformPanel() {
+    fun toggleFlowerTypeface() {
         if (isAddPhrases) return
         KeyboardManager.instance.switchKeyboard()
-        auxiliaryPanel.openEditor()
+        auxiliaryPanel.toggleFlowerMode()
+    }
+
+    private fun prepareFlowerSourceEdit() {
+        service.cancelVoiceInput()
+        if (InputModeSwitcher.isEnglish) {
+            service.finishComposingText()
+            resetToIdleState()
+        } else commitPendingCandidate()
+    }
+
+    private fun onFlowerInputRouteChanged() {
+        service.cancelVoiceInput()
+        resetToIdleState()
+        onFlowerModeChanged()
+    }
+
+    private fun onFlowerModeChanged() {
+        (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()
+        updateCandidateBar()
+    }
+
+    fun onExternalEditorTouch() {
+        if (::auxiliaryPanel.isInitialized) auxiliaryPanel.activateRawInput(userInitiated = true)
+    }
+
+    fun resumeFlowerInputAfterRestart(expectedRouteRevision: Long) {
+        if (::auxiliaryPanel.isInitialized && auxiliaryPanel.inputRouteRevision == expectedRouteRevision) {
+            auxiliaryPanel.onStartInput(restarting = false)
+        }
     }
 
     fun finishAuxiliaryInput() {
         if (::auxiliaryPanel.isInitialized) auxiliaryPanel.finishInput()
     }
 
-    fun pasteTerminalText(nativePaste: Boolean = true) {
+    fun pasteTerminalText() {
         val clip = context.clipboardManager.primaryClip
         val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
-        terminalInput.paste(text, nativePaste)
+        terminalInput.paste(text)
     }
     private val clipboardItemTimeout = appPrefs.clipboard.clipboardItemTimeout.getValue()
     private var chinesePrediction = true
@@ -213,8 +250,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         mAddPhrasesLayout = EditPhrasesView(context)
         mLlKeyboardBottomHolder = mSkbRoot.findViewById(R.id.iv_keyboard_holder)
         auxiliaryPanel = KeyboardAuxiliaryPanel(context, service, terminalInput,
-            { prepareAuxiliaryAction() }, { toggleTerminalMode() }, { pasteTerminalText(it) })
-        mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_auxiliary_panel).addView(auxiliaryPanel)
+            { prepareAuxiliaryAction() }, { prepareFlowerSourceEdit() },
+            { hasPendingCandidateInput() },
+            { onFlowerInputRouteChanged() }, { onFlowerModeChanged() }, { toggleTerminalMode() })
+        mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_flower_panel).addView(auxiliaryPanel)
+        mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_auxiliary_panel).addView(auxiliaryPanel.terminalKeys)
         initSystemBars()
         KeyboardManager.instance.setData(mSkbRoot.findViewById(R.id.skb_input_keyboard_view), this)
         PopupComponent.get().root.let { root ->
@@ -552,6 +592,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseLongKeyEvent(result: Pair<PopupMenuMode, String>) {
         val (mode, value) = result
+        if (mode == PopupMenuMode.Text && hasTerminalModifiers) {
+            prepareAuxiliaryAction()
+            terminalInput.sendText(value)
+            return
+        }
         if (mode != PopupMenuMode.None && (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish)) {
             commitPendingCandidate()
         }
@@ -582,6 +627,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseKeyEvent(sKey: SoftKey) {
         service.cancelVoiceInput()
+        if (sKey.isUniStrKey && hasTerminalModifiers) {
+            prepareAuxiliaryAction()
+            terminalInput.sendText(sKey.label)
+            return
+        }
         val keyCode = sKey.code
         if(sKey.isUserDefKey)processUserDefKey(keyCode, sKey.keyLabel)
         else if(sKey.isUniStrKey){
@@ -612,6 +662,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun processKeyUp(event: KeyEvent): Boolean {
         // 系统按键（返回键等）一律交由 InputMethodService 基类处理，以保持 DOWN/UP 消费状态一致
         if(event.isSystem) return false
+        if (event.keyCode == KeyEvent.KEYCODE_ENTER && isTransformingText && !hasTerminalModifiers) {
+            auxiliaryPanel.completeFlowerInput()
+            return true
+        }
         if (!isAddPhrases && InputModeSwitcher.isTerminalMode &&
             (InputModeSwitcher.isEnglish || terminalInput.modifiers.metaState != 0)) {
             return processTerminalKey(event)
@@ -639,7 +693,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         prepareAuxiliaryAction()
         val keyCode = event.keyCode
         val handled = when {
-            event.isCtrlPressed || event.isAltPressed -> terminalInput.sendKey(keyCode, event.metaState)
+            event.isCtrlPressed || event.isAltPressed || terminalInput.modifiers.metaState != 0 -> terminalInput.sendKey(keyCode, event.metaState)
             keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT ||
                 keyCode in listOf(KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL,
                     KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END,
@@ -727,7 +781,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             }
             InputModeSwitcher.USER_KEYCODE_EMOJI -> onSettingsMenuClick(SkbMenuMode.Emojicon)
             in InputModeSwitcher.USER_KEYCODE_RETURN..InputModeSwitcher.USER_KEYCODE_LANG -> {
-                terminalInput.modifiers.clear()
                 InputModeSwitcher.switchModeForUserKey(keyCode)
             }
             InputModeSwitcher.USER_KEYCODE_PASTE -> {
@@ -865,8 +918,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
         handwritingComposing = text
         handwritingReading = PolyphoneReading.of(text).takeIf(String::isNotEmpty)
-        // setComposingText 不经过 ImeService.commitText，花漾字转换需在此补上
-        service.setComposingText(if (isTransformingText || InputModeSwitcher.isTerminalMode) text else StringUtils.converted2FlowerTypeface(text))
+        service.setComposingText(text)
         updateComposingBubble()
     }
 
@@ -965,6 +1017,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     inner class ChoiceNotifier internal constructor() : CandidateViewListener {
+        override fun onPopupVisibilityChanged(visible: Boolean) = auxiliaryPanel.onPopupVisibilityChanged(visible)
         override fun onClickChoice(choiceId: Int) {
             DevicesUtils.tryPlayKeyDown()
             DevicesUtils.tryVibrate(KeyboardManager.instance.currentContainer)
@@ -1149,15 +1202,14 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (!isAddPhrases) service.setComposingText(text)
     }
 
-    // 花漾字转换统一在 ImeService.commitText 中进行，此处不可重复转换
     private fun commitText(text: String) {
         if (isAddPhrases) mAddPhrasesLayout.commitText(text)
-        else if (InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
+        else if (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
         else service.commitText(text)
     }
 
     private fun commitPairSymbol(text: String) {
-        if (InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish && !isAddPhrases) {
+        if (!isAddPhrases && (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish)) {
             terminalInput.sendText(text)
             return
         }
@@ -1240,10 +1292,12 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 }
             }
         }
+        auxiliaryPanel.onStartInput(restarting)
     }
 
     fun onWindowShown() {
         chinesePrediction = appPrefs.input.chinesePrediction.getValue()
+        auxiliaryPanel.onStartInput(restarting = true)
     }
 
     fun onWindowHidden() {
@@ -1263,8 +1317,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesEnd: Int) {
         if (isTransformingText) {
-            auxiliaryPanel.onHostSelectionChanged(candidatesEnd)
-            return
+            auxiliaryPanel.onHostSelectionChanged(candidatesEnd, newSelStart, newSelEnd)
+            if (isTransformingText) return
         }
         selStart = newSelStart
         selEnd = newSelEnd

@@ -23,6 +23,8 @@ import com.yuyan.imemodule.view.preference.ManagedPreference
 class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class Internal : ManagedPreferenceInternal(sharedPreferences) {
+        val flowerTypefaceMode = string("flower_typeface_mode", "Disabled")
+        val lastFlowerTypefaceMode = string("last_flower_typeface_mode", "Mars")
         val pinyinModeRime = string("input_method_pinyin_mode_rime", CustomConstant.SCHEMA_ZH_T9) //拼音输入模式记录，记录引擎
         val inputDefaultMode = int("input_default_method_mode", InputModeSwitcher.MODE_T9_CHINESE)   //默认输入法类型
         val inputMethodPinyinMode = int("input_method_pinyin_mode", InputModeSwitcher.MODE_T9_CHINESE)  // 保存中文输入法类型

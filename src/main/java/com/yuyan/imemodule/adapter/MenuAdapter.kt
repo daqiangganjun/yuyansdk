@@ -19,6 +19,7 @@ import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.database.SkbMenuCache
 import com.yuyan.imemodule.entity.SkbFunItem
 import com.yuyan.imemodule.manager.InputModeSwitcher
+import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
@@ -128,6 +129,7 @@ class MenuAdapter (context: Context?, val data: MutableList<SkbFunItem>) : Recyc
             SkbMenuMode.PinyinStroke -> rimeValue == CustomConstant.SCHEMA_ZH_STROKE
             SkbMenuMode.TextEdit -> InputModeSwitcher.isTextEditSkb
             SkbMenuMode.TerminalMode -> InputModeSwitcher.isTerminalMode
+            SkbMenuMode.SwitchKeyboard -> (KeyboardManager.instance.currentContainer as? com.yuyan.imemodule.keyboard.container.SettingsContainer)?.isKeyboardSelectionVisible == true
             else -> false
         }
         return result

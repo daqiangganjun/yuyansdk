@@ -23,7 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
-@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 8, exportSchema = false)
+@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 9, exportSchema = false)
 abstract class DataBaseKT : RoomDatabase() {
     abstract fun sideSymbolDao(): SideSymbolDao
     abstract fun clipboardDao(): ClipboardDao
@@ -34,6 +34,12 @@ abstract class DataBaseKT : RoomDatabase() {
 
         // 默认数据初始化专用，与词库复制所在的单线程执行器解耦
         private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DELETE FROM skbfun WHERE name = 'TextTransform'")
+            }
+        }
 
         private val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -99,6 +105,7 @@ abstract class DataBaseKT : RoomDatabase() {
             .addMigrations(MIGRATION_5_6)
             .addMigrations(MIGRATION_6_7)
             .addMigrations(MIGRATION_7_8)
+            .addMigrations(MIGRATION_8_9)
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
@@ -167,7 +174,6 @@ abstract class DataBaseKT : RoomDatabase() {
                     SkbFun(name = SkbMenuMode.Settings.name, isKeep = 0, position = 14),
                     SkbFun(name = SkbMenuMode.TextEdit.name, isKeep = 0, position = 15),
                     SkbFun(name = SkbMenuMode.TerminalMode.name, isKeep = 0, position = 16),
-                    SkbFun(name = SkbMenuMode.TextTransform.name, isKeep = 0, position = 17),
                 )
                 instance.skbFunDao().insertAll(skbFuns)
                 // 默认菜单写入前若已有读取，缓存中会是空结果，此处使其失效

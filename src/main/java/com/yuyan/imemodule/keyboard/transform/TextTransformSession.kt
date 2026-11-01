@@ -104,16 +104,19 @@ class TextTransformSession(
         }
     }
 
-    fun finish(commit: Boolean) {
+    fun finish(commit: Boolean, finalText: String? = null) {
         if (closed) return
         closed = true
         revision++
         job?.cancel()
         scope.cancel()
         if (!isCurrentTarget()) return
-        if (commit && !busy && !failed) {
-            if (composingActive) target.finishComposingText()
-            else if (result.isNotEmpty()) target.commitText(result, 1)
+        if (commit) {
+            if (finalText != null) {
+                if (composingActive) target.setComposingText(finalText, 1) else target.commitText(finalText, 1)
+                target.finishComposingText()
+            } else if (composingActive) target.finishComposingText()
+            else if (!busy && !failed && result.isNotEmpty()) target.commitText(result, 1)
         } else if (composingActive) {
             target.setComposingText(originalSelection.orEmpty(), 1)
             target.finishComposingText()

@@ -2,7 +2,6 @@ package com.yuyan.imemodule.keyboard
 
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.application.Launcher
-import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
 import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs
@@ -20,7 +19,6 @@ import com.yuyan.inputmethod.core.Kernel
 fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
     when (skbMenuMode) {
         SkbMenuMode.TerminalMode -> inputView.toggleTerminalMode()
-        SkbMenuMode.TextTransform -> inputView.openTextTransformPanel()
         SkbMenuMode.Emojicon, SkbMenuMode.Emoticon -> {
             val symbolType = if(skbMenuMode == SkbMenuMode.Emoticon) SymbolMode.Emoticon else SymbolMode.Emojicon
             if((KeyboardManager.instance.currentContainer as? SymbolContainer)?.getMenuMode() == symbolType){
@@ -94,9 +92,7 @@ fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
             KeyboardManager.instance.switchKeyboard()
         }
         SkbMenuMode.FlowerTypeface -> {
-            CustomConstant.flowerTypeface = if(CustomConstant.flowerTypeface == FlowerTypefaceMode.Disabled) FlowerTypefaceMode.Mars else FlowerTypefaceMode.Disabled
-            inputView.mSkbCandidatesBarView.showFlowerTypeface()
-            KeyboardManager.instance.switchKeyboard()
+            inputView.toggleFlowerTypeface()
         }
         SkbMenuMode.FloatKeyboard -> {
             val keyboardModeFloat = EnvironmentSingleton.instance.keyboardModeFloat

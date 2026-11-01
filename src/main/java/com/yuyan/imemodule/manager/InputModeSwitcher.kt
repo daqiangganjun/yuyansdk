@@ -359,7 +359,7 @@ object InputModeSwitcher {
      */
     fun saveInputMode(newInputMode: Int) {
         mInputMode = newInputMode // 设置新的输入法模式为当前的输入法模式
-        if (!(isEnglish && isTerminalMode)) Kernel.initImeSchema(
+        if (isChinese || isEnglish && !isTerminalMode) Kernel.initImeSchema(
             if (isEnglish) CustomConstant.SCHEMA_EN else getInstance().internal.pinyinModeRime.getValue())
         if (isChinese || isEnglish) {
             mRecentLauageInputMode = mInputMode

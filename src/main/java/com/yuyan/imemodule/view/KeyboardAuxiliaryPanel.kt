@@ -2,31 +2,40 @@ package com.yuyan.imemodule.view
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputConnection
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
+import com.yuyan.imemodule.application.CustomConstant
+import com.yuyan.imemodule.R
+import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
 import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.keyboard.terminal.TerminalInputDispatcher
 import com.yuyan.imemodule.keyboard.terminal.TerminalModifiers
-import com.yuyan.imemodule.keyboard.transform.TextTransformer
 import com.yuyan.imemodule.keyboard.transform.TextTransformers
 import com.yuyan.imemodule.keyboard.transform.TextTransformSession
 import com.yuyan.imemodule.manager.InputModeSwitcher
+import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.service.ImeService
+import com.yuyan.imemodule.utils.StringUtils
 import splitties.dimensions.dp
 
 class KeyboardAuxiliaryPanel(
@@ -34,50 +43,92 @@ class KeyboardAuxiliaryPanel(
     private val service: ImeService,
     private val dispatcher: TerminalInputDispatcher,
     private val beforeAction: () -> Unit,
+    private val beforeSourceEdit: () -> Unit,
+    private val hasPendingInput: () -> Boolean,
+    private val onInputRouteChanged: () -> Unit,
+    private val onModeChanged: () -> Unit,
     private val onExitTerminal: () -> Unit,
-    private val paste: (Boolean) -> Unit,
 ) : LinearLayout(context) {
-    private val shortcuts = LinearLayout(context).apply { orientation = VERTICAL }
-    private val editor = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
+    val terminalKeys = LinearLayout(context).apply { orientation = VERTICAL }
+    private val inputStrip = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
     private val source = object : EditText(context) {
+        private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         override fun onCheckIsTextEditor() = false
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val textLayout = layout ?: return
+            if (!hasWindowFocus() && isEditing && isFocused && selectionStart >= 0 && selectionStart == selectionEnd) {
+                val line = textLayout.getLineForOffset(selectionStart)
+                val x = totalPaddingLeft + textLayout.getPrimaryHorizontal(selectionStart) - scrollX
+                val top = totalPaddingTop + textLayout.getLineTop(line) - scrollY
+                val bottom = totalPaddingTop + textLayout.getLineBottom(line) - scrollY
+                caretPaint.color = currentTextColor
+                canvas.drawRect(x, top.toFloat(), x + dp(2f), bottom.toFloat(), caretPaint)
+            }
+        }
     }.apply {
-        hint = "输入原文，实时预览转换结果"
+        hint = "输入原文"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         showSoftInputOnFocus = false
         minLines = 1
-        maxLines = 2
-        textSize = 15f
-        setPadding(dp(8), dp(4), dp(8), dp(4))
-        contentDescription = "转换原文"
+        maxLines = 3
+        textSize = 16f
+        setPadding(dp(8), dp(4), dp(4), dp(4))
+        contentDescription = "花漾字原文"
+        tag = "flower_source"
+    }
+    private val sourceConnection = object : BaseInputConnection(source, true) {
+        override fun getEditable(): Editable = source.editableText
+        override fun sendKeyEvent(event: KeyEvent): Boolean = source.dispatchKeyEvent(event)
+        override fun performContextMenuAction(id: Int): Boolean = source.onTextContextMenuItem(id)
     }
     private val preview = TextView(context).apply {
         textSize = 14f
         maxLines = 2
         setPadding(dp(8), dp(3), dp(8), dp(3))
-        contentDescription = "转换结果预览"
+        contentDescription = "花漾字预览"
+        visibility = GONE
     }
-    private val status = TextView(context).apply { textSize = 11f; setPadding(dp(8), 0, dp(8), dp(2)) }
     private val providerButton = key("花漾字") { showProviders(it) }
-    private val confirmButton = key("确认") { beforeAction(); closeEditor(true) }
+    private val actionButton = key("取消") { completeFlowerInput() }.apply { tag = "flower_action" }
+    private val clearButton = ImageView(context).apply {
+        setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+        contentDescription = "清空原文"
+        isFocusable = false
+        setPadding(dp(7), dp(7), dp(7), dp(7))
+        setOnClickListener { beforeAction(); source.text.clear(); source.requestFocus() }
+    }
     private val modifierButtons = mutableMapOf<Int, TextView>()
-    private var session: TextTransformSession? = null
-    private var previewOnly = false
-    private var confirmRequested = false
-    private var observedHostComposition = false
-    private var localConnection: InputConnection? = null
-    private var provider: TextTransformer = TextTransformers.available().first { it.id == "flower:FlowerVine" }
     private val moreRows = LinearLayout(context).apply { orientation = VERTICAL }
     private val moreScroll = ScrollView(context).apply { visibility = GONE; addView(moreRows) }
+    private var session: TextTransformSession? = null
+    private var previewOnly = false
+    private var observedHostComposition = false
+    private var changingFocus = false
+    private var sourceRequested = true
+    private var internalPopupCount = 0
+    var inputRouteRevision = 0L
+        private set
 
-    val isEditing: Boolean get() = session != null
-    val inputConnection: InputConnection? get() = if (isEditing) localConnection else null
+    val isFlowerEnabled get() = CustomConstant.flowerTypeface != FlowerTypefaceMode.Disabled
+    val isEditing get() = session != null && isFlowerEnabled
+    val wantsSourceInput get() = isFlowerEnabled && sourceRequested
+    val hasDraft get() = source.text.isNotEmpty() || isEditing && hasPendingInput()
+    val inputConnection: InputConnection? get() = if (isEditing) sourceConnection else null
+    private val provider get() = TextTransformers.available().first { it.id == "flower:${CustomConstant.flowerTypeface.name}" }
 
     init {
         orientation = VERTICAL
-        visibility = GONE
-        addView(shortcuts, LayoutParams(-1, -2))
-        val first = row(shortcuts)
+        isFocusableInTouchMode = true
+        val editorRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+        inputStrip.addView(providerButton, LayoutParams(dp(78), dp(44)))
+        inputStrip.addView(source, LayoutParams(0, -2, 1f))
+        inputStrip.addView(clearButton, LayoutParams(dp(34), dp(40)))
+        editorRow.addView(inputStrip, LayoutParams(0, -2, 1f))
+        editorRow.addView(actionButton, LayoutParams(dp(60), dp(48)))
+        addView(editorRow, LayoutParams(-1, -2))
+        addView(preview, LayoutParams(-1, -2))
+        val first = row(terminalKeys)
         addKey(first, "ESC", KeyEvent.KEYCODE_ESCAPE)
         addKey(first, "TAB", KeyEvent.KEYCODE_TAB)
         addModifier(first, "CTRL", KeyEvent.KEYCODE_CTRL_LEFT)
@@ -85,48 +136,195 @@ class KeyboardAuxiliaryPanel(
         addKey(first, "PGUP", KeyEvent.KEYCODE_PAGE_UP)
         addKey(first, "PGDN", KeyEvent.KEYCODE_PAGE_DOWN)
         first.addView(key("更多") { showMore(it) }, cell())
-        shortcuts.addView(moreScroll, LayoutParams(-1, dp(132)))
-        val functionRow = row(moreRows)
-        addModifier(functionRow, "SHIFT", KeyEvent.KEYCODE_SHIFT_LEFT)
-        addKey(functionRow, "DEL", KeyEvent.KEYCODE_FORWARD_DEL, true)
-        addKey(functionRow, "INS", KeyEvent.KEYCODE_INSERT)
+        terminalKeys.addView(moreScroll, LayoutParams(-1, dp(132)))
+        val functions = row(moreRows)
+        addModifier(functions, "SHIFT", KeyEvent.KEYCODE_SHIFT_LEFT)
+        addKey(functions, "DEL", KeyEvent.KEYCODE_FORWARD_DEL, true)
+        addKey(functions, "INS", KeyEvent.KEYCODE_INSERT)
         listOf("^C" to KeyEvent.KEYCODE_C, "^D" to KeyEvent.KEYCODE_D, "^Z" to KeyEvent.KEYCODE_Z, "^L" to KeyEvent.KEYCODE_L).forEach { (label, code) ->
-            functionRow.addView(key(label) { beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
+            functions.addView(key(label) { beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
         }
-        (0 until 2).forEach { group ->
-            val functions = row(moreRows)
-            repeat(6) { index -> addKey(functions, "F${group * 6 + index + 1}", KeyEvent.KEYCODE_F1 + group * 6 + index) }
+        repeat(2) { group ->
+            val functionRow = row(moreRows)
+            repeat(6) { addKey(functionRow, "F${group * 6 + it + 1}", KeyEvent.KEYCODE_F1 + group * 6 + it) }
         }
         listOf(listOf("/", "\\", "|", "~", "`", "-", "_"), listOf("{", "}", "[", "]", "<", ">", "="),
             listOf("\"", "'", ":", ";", "$", "&", "+"), listOf("!", "@", "#", "%", "^", "?", "*")).forEach { symbols ->
-            val symbolsRow = row(moreRows)
-            symbols.forEach { symbol -> symbolsRow.addView(key(symbol) { beforeAction(); dispatcher.sendText(symbol) }, cell()) }
+            val symbolRow = row(moreRows)
+            symbols.forEach { symbol -> symbolRow.addView(key(symbol) { beforeAction(); dispatcher.sendText(symbol) }, cell()) }
         }
-        addView(editor, LayoutParams(-1, -2))
-        val actions = row(editor)
-        actions.addView(providerButton, cell())
-        actions.addView(key("清空") { source.text.clear() }, cell())
-        actions.addView(key("取消") { beforeAction(); closeEditor(false) }, cell())
-        actions.addView(confirmButton, cell())
-        editor.addView(source, LayoutParams(-1, -2))
-        editor.addView(preview, LayoutParams(-1, -2))
-        editor.addView(status, LayoutParams(-1, -2))
         source.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                session?.update(s?.toString().orEmpty(), provider)
+                if (isEditing) session?.update(s?.toString().orEmpty(), provider)
+                refreshAction()
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        source.setOnFocusChangeListener { _, focused ->
-            if (!focused && isEditing) post { if (!source.hasFocus() && isEditing) closeEditor(!previewOnly) }
+        source.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && isFlowerEnabled) {
+                if (isEditing) beforeSourceEdit() else {
+                    beforeAction()
+                    onInputRouteChanged()
+                    sourceRequested = true
+                    activateSource()
+                }
+            }
+            false
         }
-        updateTheme()
+        source.setOnFocusChangeListener { _, focused ->
+            if (!changingFocus && isFlowerEnabled) {
+                if (focused && !isEditing) activateSource()
+            }
+        }
+        val editorActions = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                onPopupVisibilityChanged(true)
+                return true
+            }
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+            override fun onDestroyActionMode(mode: ActionMode) = onPopupVisibilityChanged(false)
+        }
+        source.customSelectionActionModeCallback = editorActions
+        source.customInsertionActionModeCallback = editorActions
+        refresh()
+    }
+
+    fun toggleFlowerMode() {
+        if (isFlowerEnabled) {
+            if (isEditing) beforeAction()
+            val wasEditing = isEditing
+            val finalText = if (wasEditing && !previewOnly) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
+            closeDraft(commit = !previewOnly, finalText = finalText)
+            CustomConstant.flowerTypeface = FlowerTypefaceMode.Disabled
+            sourceRequested = false
+            if (wasEditing) onInputRouteChanged()
+        } else {
+            beforeAction()
+            val last = AppPrefs.getInstance().internal.lastFlowerTypefaceMode.getValue()
+            CustomConstant.flowerTypeface = FlowerTypefaceMode.entries.firstOrNull { it.name == last && it != FlowerTypefaceMode.Disabled }
+                ?: FlowerTypefaceMode.Mars
+            sourceRequested = true
+            onInputRouteChanged()
+            activateSource()
+        }
+        onModeChanged()
+        refresh()
+    }
+
+    fun completeFlowerInput() {
+        if (!isFlowerEnabled) return
+        if (source.text.isEmpty() && !(isEditing && hasPendingInput())) {
+            val wasEditing = isEditing
+            closeDraft(false)
+            CustomConstant.flowerTypeface = FlowerTypefaceMode.Disabled
+            sourceRequested = false
+            if (wasEditing) onInputRouteChanged()
+            onModeChanged()
+            refresh()
+            return
+        }
+        beforeAction()
+        closeDraft(true, StringUtils.converted2FlowerTypeface(source.text.toString()))
+        onInputRouteChanged()
+        sourceRequested = true
+        activateSource()
+        refresh()
+    }
+
+    private fun activateSource() {
+        if (!isFlowerEnabled) return
+        if (session != null) { source.requestFocus(); return }
+        val target = service.currentInputConnection ?: return
+        previewOnly = dispatcher.isTermux || service.currentInputEditorInfo?.inputType == InputType.TYPE_NULL
+        observedHostComposition = false
+        session = TextTransformSession(target, !previewOnly, { service.currentInputConnection === target }) { result, _, failed ->
+            preview.text = if (failed) "转换失败，请重试" else result
+            preview.visibility = if (failed || previewOnly && result.isNotEmpty()) VISIBLE else GONE
+            refreshAction()
+        }
+        source.requestFocus()
+        session?.update(source.text.toString(), provider)
+        onModeChanged()
+    }
+
+    private fun closeDraft(commit: Boolean, finalText: String? = null) {
+        val previous = session ?: return
+        session = null
+        sourceConnection.finishComposingText()
+        previous.finish(commit, finalText)
+        source.text.clear()
+        preview.text = ""
+        preview.visibility = GONE
+        observedHostComposition = false
+        changingFocus = true
+        source.clearFocus()
+        requestFocus()
+        changingFocus = false
+    }
+
+    fun activateRawInput(userInitiated: Boolean = false) {
+        if (internalPopupCount > 0) return
+        if (userInitiated && isFlowerEnabled) {
+            sourceRequested = false
+            inputRouteRevision++
+        }
+        if (!isEditing) return
+        closeDraft(commit = !previewOnly)
+        sourceRequested = false
+        onInputRouteChanged()
+        refresh()
+    }
+
+    fun onStartInput(restarting: Boolean) {
+        if (!restarting) sourceRequested = true
+        if (isFlowerEnabled && sourceRequested) activateSource()
+        refresh()
+    }
+
+    fun finishInput() {
+        val finalText = if (isEditing && !previewOnly && source.text.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
+        closeDraft(commit = !previewOnly, finalText = finalText)
+        dispatcher.modifiers.clear()
+        moreScroll.visibility = GONE
+        internalPopupCount = 0
+        refresh()
+    }
+
+    fun onPopupVisibilityChanged(visible: Boolean) {
+        internalPopupCount = (internalPopupCount + if (visible) 1 else -1).coerceAtLeast(0)
+        if (!visible && internalPopupCount == 0 && isEditing) source.requestFocus()
+    }
+
+    fun onHostSelectionChanged(candidatesEnd: Int, selectionStart: Int, selectionEnd: Int) {
+        val active = session ?: return
+        if (!active.composingActive || active.updatingTarget) return
+        if (candidatesEnd >= 0) {
+            observedHostComposition = true
+            if (selectionStart == candidatesEnd && selectionEnd == candidatesEnd) return
+        } else if (!observedHostComposition) return
+        closeDraft(commit = !previewOnly)
+        onInputRouteChanged()
+        if (sourceRequested) activateSource()
+        refresh()
+    }
+
+    private fun refreshAction() {
+        val label = if (hasDraft) "完成" else "取消"
+        if (actionButton.text.toString() != label) {
+            actionButton.text = label
+            onModeChanged()
+        }
+        clearButton.visibility = if (source.text.isNotEmpty()) VISIBLE else GONE
     }
 
     fun refresh() {
-        shortcuts.visibility = if (InputModeSwitcher.isTerminalMode) VISIBLE else GONE
-        visibility = if (InputModeSwitcher.isTerminalMode || isEditing) VISIBLE else GONE
+        visibility = if (isFlowerEnabled) VISIBLE else GONE
+        terminalKeys.visibility = if (InputModeSwitcher.isTerminalMode) VISIBLE else GONE
+        providerButton.text = if (isFlowerEnabled) provider.displayName else "花漾字"
+        providerButton.contentDescription = "花漾字样式：${providerButton.text}"
+        refreshAction()
         modifierButtons.forEach { (code, button) ->
             val state = when (code) {
                 KeyEvent.KEYCODE_CTRL_LEFT -> dispatcher.modifiers.ctrl
@@ -144,136 +342,84 @@ class KeyboardAuxiliaryPanel(
                 TerminalModifiers.State.Locked -> "锁"
             }
             button.isSelected = state != TerminalModifiers.State.Off
-            button.contentDescription = "$label，${when (state) {
-                TerminalModifiers.State.Off -> "未启用"
-                TerminalModifiers.State.Once -> "下次按键生效"
-                TerminalModifiers.State.Locked -> "已锁定"
-            }}，长按切换锁定"
+            button.contentDescription = "$label，${if (state == TerminalModifiers.State.Off) "未启用" else if (state == TerminalModifiers.State.Once) "单次" else "锁定"}，长按切换锁定"
         }
         updateTheme()
-    }
-
-    fun openEditor() {
-        if (isEditing) { closeEditor(true); return }
-        beforeAction()
-        dispatcher.modifiers.clear()
-        source.setText("")
-        val target = service.currentInputConnection ?: return
-        previewOnly = dispatcher.isTermux || InputModeSwitcher.isTerminalMode
-        confirmRequested = false
-        observedHostComposition = false
-        localConnection = object : BaseInputConnection(source, true) {
-            override fun getEditable(): Editable = source.editableText
-            override fun sendKeyEvent(event: KeyEvent): Boolean = source.dispatchKeyEvent(event)
-            override fun performContextMenuAction(id: Int): Boolean = source.onTextContextMenuItem(id)
-        }
-        session = TextTransformSession(target, !previewOnly, { service.currentInputConnection === target }) { result, busy, failed ->
-            preview.text = result
-            confirmButton.isEnabled = !busy && !failed
-            status.text = when {
-                failed -> "转换失败，请修改原文或重新选择转换方式"
-                busy -> "正在转换"
-                previewOnly -> "终端内仅在此处预览，点击确认后发送"
-                else -> "光标处为预输入，确认后落定，取消可撤销"
-            }
-            if (confirmRequested && !busy) {
-                val active = session
-                post {
-                    if (session === active && confirmRequested) {
-                        confirmRequested = false
-                        if (!failed) closeEditor(true)
-                    }
-                }
-            }
-        }
-        providerButton.text = provider.displayName
-        editor.visibility = VISIBLE
-        refresh()
-        source.requestFocus()
-        session?.update("", provider)
-    }
-
-    fun closeEditor(commit: Boolean, waitForResult: Boolean = true) {
-        val previous = session ?: return
-        if (commit && waitForResult && previous.isBusy) {
-            confirmRequested = true
-            return
-        }
-        confirmRequested = false
-        session = null
-        localConnection?.finishComposingText()
-        localConnection = null
-        previous.finish(commit)
-        source.setText("")
-        source.clearFocus()
-        editor.visibility = GONE
-        refresh()
-    }
-
-    fun finishInput() {
-        closeEditor(!previewOnly, waitForResult = false)
-        dispatcher.modifiers.clear()
-        moreScroll.visibility = GONE
-    }
-
-    fun onHostSelectionChanged(candidatesEnd: Int) {
-        val active = session ?: return
-        if (candidatesEnd >= 0) observedHostComposition = true
-        else if (observedHostComposition && active.composingActive && !active.updatingTarget) closeEditor(true)
     }
 
     fun updateTheme() {
         val theme = ThemeManager.activeTheme
         setBackgroundColor(theme.barColor)
+        terminalKeys.setBackgroundColor(theme.barColor)
+        inputStrip.background = GradientDrawable().apply { cornerRadius = dp(22f); setColor(theme.keyBackgroundColor) }
+        source.background = null
+        source.setTextColor(theme.keyTextColor)
+        source.setHintTextColor(theme.keyTextColor)
+        clearButton.drawable?.setTint(theme.keyTextColor)
+        providerButton.setTextColor(theme.keyTextColor)
+        val indicator = context.getDrawable(R.drawable.ic_menu_arrow_down)?.mutate()?.apply {
+            setBounds(0, 0, dp(12), dp(12))
+            setTint(theme.keyTextColor)
+        }
+        providerButton.compoundDrawablePadding = dp(2)
+        providerButton.setCompoundDrawablesRelative(null, null, indicator, null)
+        providerButton.background = GradientDrawable().apply { cornerRadius = dp(22f); setColor(theme.functionKeyBackgroundColor) }
+        actionButton.setTextColor(theme.keyTextColor)
+        actionButton.background = null
+        preview.setTextColor(theme.keyTextColor)
         fun style(view: View) {
             if (view is TextView) {
                 view.setTextColor(if (view.isSelected) theme.accentKeyTextColor else theme.keyTextColor)
-                view.setHintTextColor(theme.keyTextColor)
                 view.background = GradientDrawable().apply {
                     cornerRadius = dp(5f)
                     setColor(if (view.isSelected) theme.accentKeyBackgroundColor else theme.keyBackgroundColor)
                 }
             }
-            if (view is ViewGroup) for (index in 0 until view.childCount) style(view.getChildAt(index))
+            if (view is ViewGroup) repeat(view.childCount) { style(view.getChildAt(it)) }
         }
-        style(this)
+        style(terminalKeys)
     }
 
     private fun showProviders(anchor: View) {
-        val choices = TextTransformers.available()
-        PopupMenu(context, anchor).apply {
-            choices.forEachIndexed { index, item -> menu.add(0, index, index, item.displayName) }
+        val choices = FlowerTypefaceMode.entries.filter { it != FlowerTypefaceMode.Disabled }
+        val popup = PopupMenu(context, anchor).apply {
+            choices.forEachIndexed { index, mode ->
+                val name = TextTransformers.available().first { it.id == "flower:${mode.name}" }.displayName
+                menu.add(0, index, index, name)
+            }
             setOnMenuItemClickListener {
-                provider = choices[it.itemId]
-                providerButton.text = provider.displayName
+                beforeAction()
+                CustomConstant.flowerTypeface = choices[it.itemId]
                 session?.update(source.text.toString(), provider)
+                onModeChanged()
+                refresh()
                 true
             }
-        }.show()
+        }
+        onPopupVisibilityChanged(true)
+        popup.setOnDismissListener { onPopupVisibilityChanged(false) }
+        popup.show()
     }
 
     private fun showMore(anchor: View) {
-        PopupMenu(context, anchor).apply {
-            listOf("代码符号与功能键", "花漾字与转换", "按文本粘贴", "清除修饰键", "退出终端模式").forEachIndexed { index, title ->
-                menu.add(0, index, index, title)
-            }
+        val popup = PopupMenu(context, anchor).apply {
+            listOf("代码符号与功能键", "清除修饰键", "退出终端模式").forEachIndexed { index, title -> menu.add(0, index, index, title) }
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     0 -> moreScroll.visibility = if (moreScroll.visibility == VISIBLE) GONE else VISIBLE
-                    1 -> openEditor()
-                    2 -> { beforeAction(); paste(false) }
-                    3 -> dispatcher.modifiers.clear()
-                    4 -> onExitTerminal()
+                    1 -> dispatcher.modifiers.clear()
+                    2 -> onExitTerminal()
                 }
                 true
             }
-        }.show()
+        }
+        onPopupVisibilityChanged(true)
+        popup.setOnDismissListener { onPopupVisibilityChanged(false) }
+        popup.show()
     }
 
     private fun row(parent: LinearLayout) = LinearLayout(context).also { parent.addView(it, LayoutParams(-1, -2)) }
-
     private fun cell() = LayoutParams(0, dp(40), 1f).apply { setMargins(dp(2), dp(2), dp(2), dp(2)) }
-
     private fun key(label: String, action: (View) -> Unit) = TextView(context).apply {
         text = label
         contentDescription = label
@@ -284,21 +430,17 @@ class KeyboardAuxiliaryPanel(
         isFocusable = false
         setOnClickListener(action)
     }
-
     private fun addModifier(parent: LinearLayout, label: String, code: Int) {
         val button = key(label) { dispatcher.modifiers.toggle(code) }
         button.setOnLongClickListener { dispatcher.modifiers.toggle(code, lock = true); true }
         modifierButtons[code] = button
         parent.addView(button, cell())
     }
-
     private fun addKey(parent: LinearLayout, label: String, code: Int, repeat: Boolean = false) {
         val action = { beforeAction(); dispatcher.sendKey(code) }
         val button = key(label) { action() }
         if (repeat) {
-            val repeater = object : Runnable {
-                override fun run() { action(); button.postDelayed(this, 65) }
-            }
+            val repeater = object : Runnable { override fun run() { action(); button.postDelayed(this, 65) } }
             button.setOnLongClickListener { repeater.run(); true }
             button.setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) button.removeCallbacks(repeater)
@@ -311,9 +453,5 @@ class KeyboardAuxiliaryPanel(
         }
         parent.addView(button, cell())
     }
-
-    override fun onDetachedFromWindow() {
-        finishInput()
-        super.onDetachedFromWindow()
-    }
+    override fun onDetachedFromWindow() { finishInput(); super.onDetachedFromWindow() }
 }

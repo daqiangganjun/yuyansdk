@@ -93,7 +93,15 @@ class TerminalInputDispatcher(
     fun sendText(text: String): Boolean {
         if (text.isEmpty()) return true
         if (modifiers.metaState != 0 && text.length == 1) {
-            val events = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(text.toCharArray())
+            val symbol = when (val char = text[0]) {
+                in '\uFF01'..'\uFF5E' -> (char.code - 0xFEE0).toChar()
+                '\u3000' -> ' '
+                '\u3002' -> '.'
+                '\u2018', '\u2019' -> '\''
+                '\u201C', '\u201D' -> '"'
+                else -> char
+            }
+            val events = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(charArrayOf(symbol))
             val key = events?.firstOrNull {
                 it.action == KeyEvent.ACTION_DOWN && !KeyEvent.isModifierKey(it.keyCode)
             }

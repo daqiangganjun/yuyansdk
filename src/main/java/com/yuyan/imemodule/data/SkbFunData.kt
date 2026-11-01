@@ -7,7 +7,6 @@ import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 
 val menuSkbFunsPreset: Map<SkbMenuMode, SkbFunItem> = hashMapOf(
     SkbMenuMode.TerminalMode to SkbFunItem(Launcher.instance.context.getString(R.string.terminal_mode), R.drawable.ic_menu_terminal, SkbMenuMode.TerminalMode),
-    SkbMenuMode.TextTransform to SkbFunItem(Launcher.instance.context.getString(R.string.text_transform_panel), R.drawable.ic_menu_flower, SkbMenuMode.TextTransform),
     SkbMenuMode.Emojicon to SkbFunItem(Launcher.instance.context.getString(R.string.emoji_setting), R.drawable.ic_menu_emoji, SkbMenuMode.Emojicon),
     SkbMenuMode.SwitchKeyboard to SkbFunItem(Launcher.instance.context.getString(R.string.changeKeyboard), R.drawable.ic_menu_keyboard, SkbMenuMode.SwitchKeyboard),
     SkbMenuMode.KeyboardHeight to SkbFunItem(Launcher.instance.context.getString(R.string.setting_ime_keyboard_height), R.drawable.ic_menu_height, SkbMenuMode.KeyboardHeight),
@@ -26,6 +25,21 @@ val menuSkbFunsPreset: Map<SkbMenuMode, SkbFunItem> = hashMapOf(
     SkbMenuMode.ClearClipBoard to SkbFunItem(Launcher.instance.context.getString(R.string.clipboard_clear), R.drawable.ic_menu_delete, SkbMenuMode.ClearClipBoard),
     SkbMenuMode.Emoticon to SkbFunItem(Launcher.instance.context.getString(R.string.emoticons), R.drawable.ic_menu_emoji_emoticons, SkbMenuMode.Emoticon),
     SkbMenuMode.AddPhrases to SkbFunItem(Launcher.instance.context.getString(R.string.add_phrases), R.drawable.ic_menu_plus, SkbMenuMode.AddPhrases),
-    SkbMenuMode.LockClipBoard to SkbFunItem(Launcher.instance.context.getString(R.string.lock_view), R.drawable.icon_symbol_lock, SkbMenuMode.LockClipBoard),
+    SkbMenuMode.LockClipBoard to SkbFunItem(Launcher.instance.context.getString(R.string.clipboard_keep_open), R.drawable.icon_symbol_lock, SkbMenuMode.LockClipBoard),
     SkbMenuMode.TextEdit to SkbFunItem(Launcher.instance.context.getString(R.string.menu_text_edit), R.drawable.ic_menu_cursor_icon, SkbMenuMode.TextEdit),
     )
+
+fun candidateToolbarItems(baseItems: List<SkbFunItem>, clipboardMode: SkbMenuMode?): List<SkbFunItem> {
+    if (clipboardMode == null) return baseItems
+    val actions = setOf(SkbMenuMode.ClearClipBoard, SkbMenuMode.LockClipBoard, SkbMenuMode.AddPhrases)
+    val clipboardPosition = baseItems.indexOfFirst { it.skbMenuMode == SkbMenuMode.ClipBoard }.coerceAtLeast(0)
+    val items = baseItems.take(clipboardPosition).filterNot { it.skbMenuMode in actions }.toMutableList()
+    fun append(mode: SkbMenuMode) {
+        if (items.none { it.skbMenuMode == mode }) menuSkbFunsPreset[mode]?.let(items::add)
+    }
+    append(SkbMenuMode.ClipBoard)
+    append(SkbMenuMode.Phrases)
+    append(SkbMenuMode.LockClipBoard)
+    append(if (clipboardMode == SkbMenuMode.ClipBoard) SkbMenuMode.ClearClipBoard else SkbMenuMode.AddPhrases)
+    return items
+}

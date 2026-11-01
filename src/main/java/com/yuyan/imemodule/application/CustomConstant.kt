@@ -1,6 +1,7 @@
 ﻿package com.yuyan.imemodule.application
 
 import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
+import com.yuyan.imemodule.prefs.AppPrefs
 
 /**
  * 用户自定义常量类
@@ -21,7 +22,15 @@ object CustomConstant {
     const val FEEDBACK_TXC_REPO = "https://github.com/daqiangganjun/YuyanSelfOpt/issues"
 
     // 花漾字状态
-    var flowerTypeface = FlowerTypefaceMode.Disabled
+    var flowerTypeface: FlowerTypefaceMode
+        get() = FlowerTypefaceMode.entries.firstOrNull {
+            it.name == AppPrefs.getInstance().internal.flowerTypefaceMode.getValue()
+        } ?: FlowerTypefaceMode.Disabled
+        set(value) {
+            val prefs = AppPrefs.getInstance().internal
+            prefs.flowerTypefaceMode.setValue(value.name)
+            if (value != FlowerTypefaceMode.Disabled) prefs.lastFlowerTypefaceMode.setValue(value.name)
+        }
     // 剪切板/常用语界面锁定
     var lockClipBoardEnable = false
 }
