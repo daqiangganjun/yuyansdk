@@ -1,6 +1,6 @@
 # 语燕输入法SDK
 
-本分支的终端模式入口位于键盘「更多」页，英文直输、中文沿用既有方案，中英切换键保留。`keyboard/terminal/TerminalInputDispatcher.kt` 统一发送字母、符号与特殊键的修饰组合，符号和数字布局切换保留待用状态；编辑及数字等工具布局不触发词库方案校验。方向与粘贴使用原有编辑小键盘。
+本分支的终端模式入口位于键盘「更多」页，英文直输、中文沿用既有方案，中英切换键保留。`keyboard/terminal/TerminalInputDispatcher.kt` 统一发送字母、符号与特殊键的修饰组合，符号和数字布局切换保留待用状态；编辑及数字等工具布局不触发词库方案校验。方向与粘贴使用原有编辑小键盘。终端顶栏依次为 TAB、ESC、CTRL、ALT、PGUP、PGDN 和更多；扩展区以 F(n) 替代 INS，并移除 F1–F12 两行。点击 F(n) 临时显示数字键盘，编号1到12实时更新按钮，再次点击发送标准功能键并恢复原容器，保留待用修饰键；退格改号，空号再点或长按取消。临时切换仅改变视图，不改变语言、中文方案或默认模式。
 
 `view/KeyboardAuxiliaryPanel.kt` 将终端快捷键与花漾字原文处理栏分别挂载在候选栏下方和上方。花漾字启用后持续显示处理栏，原文通过本地 `BaseInputConnection` 编辑，宿主连接接收实时组合预览；完成后提交当前一段、清空原文并继续聚焦，空内容取消模式。点击宿主切回原始输入，点击处理框恢复处理；内部弹出菜单和编辑工具条不会触发原始输入切换。模式与上次样式使用 `flower_typeface_mode` 和 `last_flower_typeface_mode` 偏好保存。`TextTransformer`、`TextTransformers.register()` 与 `TextTransformSession` 保留通用异步转换接口供后续翻译复用，当前 UI 只显示花漾字处理，不提供独立转换入口。Room 8→9 仅清理旧 TextTransform 菜单，剪贴板锁定功能保留，顶栏依次显示删除、锁定、常用语和原位剪贴板。Android 回归测试显式使用项目已有的 ConstraintLayout 2.2.0。
 

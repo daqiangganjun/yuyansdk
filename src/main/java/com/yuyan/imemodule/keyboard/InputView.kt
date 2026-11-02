@@ -151,7 +151,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onExternalEditorTouch() {
-        if (::auxiliaryPanel.isInitialized) auxiliaryPanel.activateRawInput(userInitiated = true)
+        if (::auxiliaryPanel.isInitialized) {
+            auxiliaryPanel.cancelFunctionKeyInput()
+            auxiliaryPanel.activateRawInput(userInitiated = true)
+        }
     }
 
     fun resumeFlowerInputAfterRestart(expectedRouteRevision: Long) {
@@ -592,6 +595,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseLongKeyEvent(result: Pair<PopupMenuMode, String>) {
         val (mode, value) = result
+        if (mode == PopupMenuMode.Text && auxiliaryPanel.consumeFunctionKeyInput(text = value)) return
         if (mode == PopupMenuMode.Text && hasTerminalModifiers) {
             prepareAuxiliaryAction()
             terminalInput.sendText(value)
@@ -627,6 +631,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseKeyEvent(sKey: SoftKey) {
         service.cancelVoiceInput()
+        if (auxiliaryPanel.consumeFunctionKeyInput(sKey.code, if (sKey.isUniStrKey) sKey.label else "")) return
         if (sKey.isUniStrKey && hasTerminalModifiers) {
             prepareAuxiliaryAction()
             terminalInput.sendText(sKey.label)
@@ -650,6 +655,9 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
 
     fun processKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (auxiliaryPanel.isChoosingFunctionKey && (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ||
+                keyCode in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ||
+                keyCode in listOf(KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL, KeyEvent.KEYCODE_ESCAPE))) return true
         if (keyCode >= KeyEvent.KEYCODE_A && keyCode <= KeyEvent.KEYCODE_Z) return true
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
@@ -662,6 +670,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun processKeyUp(event: KeyEvent): Boolean {
         // 系统按键（返回键等）一律交由 InputMethodService 基类处理，以保持 DOWN/UP 消费状态一致
         if(event.isSystem) return false
+        if (auxiliaryPanel.consumeFunctionKeyInput(event.keyCode)) return true
         if (event.keyCode == KeyEvent.KEYCODE_ENTER && isTransformingText && !hasTerminalModifiers) {
             auxiliaryPanel.completeFlowerInput()
             return true
@@ -1047,6 +1056,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onSettingsMenuClick(skbMenuMode: SkbMenuMode, extra: Phrase? = null) {
+        auxiliaryPanel.cancelFunctionKeyInput()
         if (skbMenuMode == SkbMenuMode.AddPhrases) {
             isAddPhrases = true
             KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)

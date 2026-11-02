@@ -28,6 +28,7 @@ import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
 import com.yuyan.imemodule.data.theme.ThemeManager
+import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.keyboard.terminal.TerminalInputDispatcher
 import com.yuyan.imemodule.keyboard.terminal.TerminalModifiers
 import com.yuyan.imemodule.keyboard.transform.TextTransformers
@@ -36,6 +37,7 @@ import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.service.ImeService
 import com.yuyan.imemodule.utils.StringUtils
+import com.yuyan.imemodule.utils.toast
 import splitties.dimensions.dp
 
 class KeyboardAuxiliaryPanel(
@@ -99,6 +101,13 @@ class KeyboardAuxiliaryPanel(
         setOnClickListener { beforeAction(); source.text.clear(); source.requestFocus() }
     }
     private val modifierButtons = mutableMapOf<Int, TextView>()
+    private val functionKeyButton = key("F(n)") { toggleFunctionKeyInput() }.apply {
+        tag = "terminal_function_key"
+        setOnLongClickListener { cancelFunctionKeyInput(); true }
+    }
+    private var keyboardBeforeFunctionKey: KeyboardManager.KeyboardType? = null
+    private var functionKeyDigits = ""
+    val isChoosingFunctionKey get() = keyboardBeforeFunctionKey != null
     private val moreRows = LinearLayout(context).apply { orientation = VERTICAL }
     private val moreScroll = ScrollView(context).apply { visibility = GONE; addView(moreRows) }
     private var session: TextTransformSession? = null
@@ -129,8 +138,8 @@ class KeyboardAuxiliaryPanel(
         addView(editorRow, LayoutParams(-1, -2))
         addView(preview, LayoutParams(-1, -2))
         val first = row(terminalKeys)
-        addKey(first, "ESC", KeyEvent.KEYCODE_ESCAPE)
         addKey(first, "TAB", KeyEvent.KEYCODE_TAB)
+        addKey(first, "ESC", KeyEvent.KEYCODE_ESCAPE)
         addModifier(first, "CTRL", KeyEvent.KEYCODE_CTRL_LEFT)
         addModifier(first, "ALT", KeyEvent.KEYCODE_ALT_LEFT)
         addKey(first, "PGUP", KeyEvent.KEYCODE_PAGE_UP)
@@ -140,18 +149,16 @@ class KeyboardAuxiliaryPanel(
         val functions = row(moreRows)
         addModifier(functions, "SHIFT", KeyEvent.KEYCODE_SHIFT_LEFT)
         addKey(functions, "DEL", KeyEvent.KEYCODE_FORWARD_DEL, true)
-        addKey(functions, "INS", KeyEvent.KEYCODE_INSERT)
+        functions.addView(functionKeyButton, cell())
         listOf("^C" to KeyEvent.KEYCODE_C, "^D" to KeyEvent.KEYCODE_D, "^Z" to KeyEvent.KEYCODE_Z, "^L" to KeyEvent.KEYCODE_L).forEach { (label, code) ->
-            functions.addView(key(label) { beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
-        }
-        repeat(2) { group ->
-            val functionRow = row(moreRows)
-            repeat(6) { addKey(functionRow, "F${group * 6 + it + 1}", KeyEvent.KEYCODE_F1 + group * 6 + it) }
+            functions.addView(key(label) { cancelFunctionKeyInput(); beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
         }
         listOf(listOf("/", "\\", "|", "~", "`", "-", "_"), listOf("{", "}", "[", "]", "<", ">", "="),
             listOf("\"", "'", ":", ";", "$", "&", "+"), listOf("!", "@", "#", "%", "^", "?", "*")).forEach { symbols ->
             val symbolRow = row(moreRows)
-            symbols.forEach { symbol -> symbolRow.addView(key(symbol) { beforeAction(); dispatcher.sendText(symbol) }, cell()) }
+            symbols.forEach { symbol -> symbolRow.addView(key(symbol) {
+                if (!consumeFunctionKeyInput(text = symbol)) { beforeAction(); dispatcher.sendText(symbol) }
+            }, cell()) }
         }
         source.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -284,6 +291,7 @@ class KeyboardAuxiliaryPanel(
     }
 
     fun finishInput() {
+        cancelFunctionKeyInput()
         val finalText = if (isEditing && !previewOnly && source.text.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
         closeDraft(commit = !previewOnly, finalText = finalText)
         dispatcher.modifiers.clear()
@@ -325,6 +333,11 @@ class KeyboardAuxiliaryPanel(
         providerButton.text = if (isFlowerEnabled) provider.displayName else "花漾字"
         providerButton.contentDescription = "花漾字样式：${providerButton.text}"
         refreshAction()
+        functionKeyButton.text = "F(${functionKeyDigits.ifEmpty { "n" }})"
+        functionKeyButton.isSelected = isChoosingFunctionKey
+        functionKeyButton.contentDescription = if (isChoosingFunctionKey) {
+            "功能键编号：${functionKeyDigits.ifEmpty { "未输入" }}，输入1到12，再次点击发送，长按取消"
+        } else "输入功能键编号，范围1到12"
         modifierButtons.forEach { (code, button) ->
             val state = when (code) {
                 KeyEvent.KEYCODE_CTRL_LEFT -> dispatcher.modifiers.ctrl
@@ -406,7 +419,10 @@ class KeyboardAuxiliaryPanel(
             listOf("代码符号与功能键", "清除修饰键", "退出终端模式").forEachIndexed { index, title -> menu.add(0, index, index, title) }
             setOnMenuItemClickListener {
                 when (it.itemId) {
-                    0 -> moreScroll.visibility = if (moreScroll.visibility == VISIBLE) GONE else VISIBLE
+                    0 -> {
+                        cancelFunctionKeyInput()
+                        moreScroll.visibility = if (moreScroll.visibility == VISIBLE) GONE else VISIBLE
+                    }
                     1 -> dispatcher.modifiers.clear()
                     2 -> onExitTerminal()
                 }
@@ -437,7 +453,9 @@ class KeyboardAuxiliaryPanel(
         parent.addView(button, cell())
     }
     private fun addKey(parent: LinearLayout, label: String, code: Int, repeat: Boolean = false) {
-        val action = { beforeAction(); dispatcher.sendKey(code) }
+        val action = {
+            if (!consumeFunctionKeyInput(code)) { beforeAction(); dispatcher.sendKey(code) }
+        }
         val button = key(label) { action() }
         if (repeat) {
             val repeater = object : Runnable { override fun run() { action(); button.postDelayed(this, 65) } }
@@ -452,6 +470,57 @@ class KeyboardAuxiliaryPanel(
             })
         }
         parent.addView(button, cell())
+    }
+
+    private fun toggleFunctionKeyInput() {
+        if (!isChoosingFunctionKey) {
+            beforeAction()
+            keyboardBeforeFunctionKey = KeyboardManager.instance.currentKeyboardType ?: return
+            // 编号输入只临时切换视图，保留语言、中文方案及修饰键状态。
+            KeyboardManager.instance.switchKeyboard(KeyboardManager.KeyboardType.NUMBER)
+            refresh()
+            return
+        }
+        val number = functionKeyDigits.toIntOrNull()
+        if (functionKeyDigits.isNotEmpty() && (number == null || number !in 1..12)) {
+            context.toast("功能键编号请输入1到12")
+            return
+        }
+        cancelFunctionKeyInput()
+        if (number != null) {
+            beforeAction()
+            dispatcher.sendKey(KeyEvent.KEYCODE_F1 + number - 1)
+        }
+    }
+
+    fun consumeFunctionKeyInput(code: Int = KeyEvent.KEYCODE_UNKNOWN, text: String = ""): Boolean {
+        if (!isChoosingFunctionKey) return false
+        val digits = when (code) {
+            in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> (code - KeyEvent.KEYCODE_0).toString()
+            in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 -> (code - KeyEvent.KEYCODE_NUMPAD_0).toString()
+            else -> text
+        }
+        when {
+            code == KeyEvent.KEYCODE_DEL || code == KeyEvent.KEYCODE_FORWARD_DEL -> functionKeyDigits = functionKeyDigits.dropLast(1)
+            code == KeyEvent.KEYCODE_ESCAPE || code == InputModeSwitcher.USER_KEYCODE_RETURN -> cancelFunctionKeyInput()
+            digits.isNotEmpty() && digits.all { it in '0'..'9' } -> {
+                if (functionKeyDigits.length + digits.length <= 2) functionKeyDigits += digits
+                else context.toast("功能键编号请输入1到12")
+            }
+            else -> { cancelFunctionKeyInput(); return false }
+        }
+        refresh()
+        return true
+    }
+
+    fun cancelFunctionKeyInput() {
+        val previous = keyboardBeforeFunctionKey ?: return
+        keyboardBeforeFunctionKey = null
+        functionKeyDigits = ""
+        if (KeyboardManager.instance.currentKeyboardType == KeyboardManager.KeyboardType.NUMBER) {
+            KeyboardManager.instance.switchKeyboard(previous)
+        }
+        refresh()
     }
     override fun onDetachedFromWindow() { finishInput(); super.onDetachedFromWindow() }
 }
