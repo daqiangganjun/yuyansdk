@@ -22,7 +22,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
-import android.widget.ScrollView
 import android.widget.TextView
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.R
@@ -108,8 +107,7 @@ class KeyboardAuxiliaryPanel(
     private var keyboardBeforeFunctionKey: KeyboardManager.KeyboardType? = null
     private var functionKeyDigits = ""
     val isChoosingFunctionKey get() = keyboardBeforeFunctionKey != null
-    private val moreRows = LinearLayout(context).apply { orientation = VERTICAL }
-    private val moreScroll = ScrollView(context).apply { visibility = GONE; addView(moreRows) }
+    private val moreRows = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
     private var session: TextTransformSession? = null
     private var previewOnly = false
     private var observedHostComposition = false
@@ -145,20 +143,13 @@ class KeyboardAuxiliaryPanel(
         addKey(first, "PGUP", KeyEvent.KEYCODE_PAGE_UP)
         addKey(first, "PGDN", KeyEvent.KEYCODE_PAGE_DOWN)
         first.addView(key("更多") { showMore(it) }, cell())
-        terminalKeys.addView(moreScroll, LayoutParams(-1, dp(132)))
+        terminalKeys.addView(moreRows, LayoutParams(-1, -2))
         val functions = row(moreRows)
         addModifier(functions, "SHIFT", KeyEvent.KEYCODE_SHIFT_LEFT)
         addKey(functions, "DEL", KeyEvent.KEYCODE_FORWARD_DEL, true)
         functions.addView(functionKeyButton, cell())
         listOf("^C" to KeyEvent.KEYCODE_C, "^D" to KeyEvent.KEYCODE_D, "^Z" to KeyEvent.KEYCODE_Z, "^L" to KeyEvent.KEYCODE_L).forEach { (label, code) ->
             functions.addView(key(label) { cancelFunctionKeyInput(); beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
-        }
-        listOf(listOf("/", "\\", "|", "~", "`", "-", "_"), listOf("{", "}", "[", "]", "<", ">", "="),
-            listOf("\"", "'", ":", ";", "$", "&", "+"), listOf("!", "@", "#", "%", "^", "?", "*")).forEach { symbols ->
-            val symbolRow = row(moreRows)
-            symbols.forEach { symbol -> symbolRow.addView(key(symbol) {
-                if (!consumeFunctionKeyInput(text = symbol)) { beforeAction(); dispatcher.sendText(symbol) }
-            }, cell()) }
         }
         source.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -295,7 +286,7 @@ class KeyboardAuxiliaryPanel(
         val finalText = if (isEditing && !previewOnly && source.text.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
         closeDraft(commit = !previewOnly, finalText = finalText)
         dispatcher.modifiers.clear()
-        moreScroll.visibility = GONE
+        moreRows.visibility = GONE
         internalPopupCount = 0
         refresh()
     }
@@ -416,12 +407,12 @@ class KeyboardAuxiliaryPanel(
 
     private fun showMore(anchor: View) {
         val popup = PopupMenu(context, anchor).apply {
-            listOf("代码符号与功能键", "清除修饰键", "退出终端模式").forEachIndexed { index, title -> menu.add(0, index, index, title) }
+            listOf("功能键", "清除修饰键", "退出终端模式").forEachIndexed { index, title -> menu.add(0, index, index, title) }
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     0 -> {
                         cancelFunctionKeyInput()
-                        moreScroll.visibility = if (moreScroll.visibility == VISIBLE) GONE else VISIBLE
+                        moreRows.visibility = if (moreRows.visibility == VISIBLE) GONE else VISIBLE
                     }
                     1 -> dispatcher.modifiers.clear()
                     2 -> onExitTerminal()
