@@ -225,6 +225,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private val CLEAR_BATCH_SIZE = 1000
     private val MAX_CLEAR_BATCHES = 30
 
+    private val floatCornerRadius: Float by lazy { DevicesUtils.dip2px(16).toFloat() }
+    private val floatOutlineProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, floatCornerRadius)
+        }
+    }
+
     /**
      * 拼音气泡在窗口中的位置。
      *
@@ -559,14 +566,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
     }
 
-    private val floatCornerRadius: Float by lazy { DevicesUtils.dip2px(16).toFloat() }
-
-    private val floatOutlineProvider = object : ViewOutlineProvider() {
-        override fun getOutline(view: View, outline: Outline) {
-            outline.setRoundRect(0, 0, view.width, view.height, floatCornerRadius)
-        }
-    }
-
     private fun applyFloatKeyboardOutline(isFloat: Boolean) {
         if (isFloat) {
             mSkbRoot.outlineProvider = floatOutlineProvider
@@ -575,6 +574,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.outlineProvider = ViewOutlineProvider.BACKGROUND
             mSkbRoot.clipToOutline = false
         }
+        mSkbRoot.invalidateOutline()
     }
 
     private fun onClick(view: View) {
@@ -595,10 +595,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     override fun responseLongKeyEvent(result: Pair<PopupMenuMode, String>) {
         val (mode, value) = result
-        if (mode == PopupMenuMode.Text && auxiliaryPanel.consumeFunctionKeyInput(text = value)) return
-        if (mode == PopupMenuMode.Text && hasTerminalModifiers) {
-            prepareAuxiliaryAction()
-            terminalInput.sendText(value)
+        if (mode == PopupMenuMode.Text) {
+            commitExternalText(value)
             return
         }
         if (mode != PopupMenuMode.None && (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish)) {
@@ -606,7 +604,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
 
         when (mode) {
-            PopupMenuMode.Text -> if (SymbolPreset.containsKey(value)) commitPairSymbol(value) else commitText(value)
             PopupMenuMode.SwitchIME -> InputMethodUtil.showPicker()
             PopupMenuMode.EMOJI -> onSettingsMenuClick(SkbMenuMode.Emojicon)
             PopupMenuMode.EnglishCell -> {
@@ -623,6 +620,17 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             else -> {}
         }
         if (mode == PopupMenuMode.Clear) resetToIdleState()
+    }
+
+    fun commitExternalText(text: String) {
+        if (auxiliaryPanel.consumeFunctionKeyInput(text = text)) return
+        if (hasTerminalModifiers) {
+            prepareAuxiliaryAction()
+            terminalInput.sendText(text)
+            return
+        }
+        if (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish) commitPendingCandidate()
+        if (SymbolPreset.containsKey(text)) commitPairSymbol(text) else commitText(text)
     }
 
     override fun responseHandwritingResultEvent(words: Array<CandidateListItem>) {
@@ -728,6 +736,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 textBeforeCursors.clear()
                 commitText(label)
             }
+            InputModeSwitcher.isNumberSkb && appPrefs.input.numberKeyboardCompatibleInput.getValue() &&
+                keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 && !event.isCtrlPressed && !event.isAltPressed -> commitText(label)
             keyCode != 0 -> sendKeyEvent(keyCode)
             label.isNotEmpty() -> if (SymbolPreset.containsKey(label)) commitPairSymbol(label) else commitText(label)
             else -> result = false

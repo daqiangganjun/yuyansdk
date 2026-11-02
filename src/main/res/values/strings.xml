@@ -57,6 +57,9 @@
     <string name="emoji_input">候选词中显示Emoji表情</string>
     <string name="symbol_setting">符号输入</string>
     <string name="symbol_pair_input">成对符号自动匹配</string>
+    <string name="number_input_setting">数字输入</string>
+    <string name="number_keyboard_compatible_input">数字键盘兼容输入</string>
+    <string name="number_keyboard_compatible_input_summary">开启后将数字作为文本输入，适用于远程控制等应用；关闭后发送数字按键。终端修饰键组合仍发送按键。</string>
     <!-- Used by the toggle keys in soft keyboards. -->
     <string name="cancel">取消</string>
     <!--键盘设置条目-->

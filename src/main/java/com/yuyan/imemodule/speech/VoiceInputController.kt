@@ -17,13 +17,15 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.yuyan.imemodule.service.ImeService
+import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.AppUtil
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VoiceInputController(
     private val service: ImeService,
     private val root: RelativeLayout,
-    private val prepareInput: () -> Unit
+    private val prepareInput: () -> Unit,
+    private val commitResult: (String) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val stopRecording = AtomicBoolean(true)
@@ -33,6 +35,7 @@ class VoiceInputController(
     private var status: TextView? = null
     private var preview: TextView? = null
     private var finishing = false
+    private var latestResult = ""
     private var worker: Thread? = null
     private val connectionTimeout = Runnable { fail(SpeechFailure(SpeechFailureKind.TIMEOUT)) }
     private val finalTimeout = Runnable { fail(SpeechFailure(SpeechFailureKind.TIMEOUT)) }
@@ -58,8 +61,8 @@ class VoiceInputController(
             AppUtil.launchSettingsToVoice(service)
             return
         }
-        val target = service.activeInputConnection ?: return
         prepareInput()
+        val target = service.activeInputConnection ?: return
         val token = ++generation
         stopRecording.set(false)
         finishing = false
@@ -76,11 +79,15 @@ class VoiceInputController(
             }
 
             override fun onResult(result: SpeechResult) = dispatch(token) {
-                if (result.text.isNotBlank()) preview?.text = result.text
+                if (result.text.isNotBlank()) {
+                    latestResult = result.text
+                    preview?.text = result.text
+                }
                 if (result.isFinal) {
                     val stillCurrent = service.activeInputConnection === target
+                    val text = latestResult
                     cancel()
-                    if (stillCurrent && result.text.isNotBlank()) target.commitText(result.text, 1)
+                    if (stillCurrent && text.isNotBlank()) commitResult(text)
                     else if (stillCurrent) message("未识别到语音，请重试")
                 }
             }
@@ -115,6 +122,7 @@ class VoiceInputController(
         session?.cancel()
         session = null
         finishing = false
+        latestResult = ""
         overlay?.let { root.removeView(it) }
         overlay = null
         status = null
@@ -192,7 +200,8 @@ class VoiceInputController(
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.END
         })
-        root.addView(panel, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
+        val panelWidth = root.width.takeIf { it > 0 } ?: EnvironmentSingleton.instance.inputAreaWidth
+        root.addView(panel, RelativeLayout.LayoutParams(panelWidth, RelativeLayout.LayoutParams.WRAP_CONTENT)
             .apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
         overlay = panel
     }

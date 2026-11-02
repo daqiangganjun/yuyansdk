@@ -116,6 +116,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val symbolPairInput = switch(
             R.string.symbol_pair_input, "symbol_pair_input_enable", true
         )
+
+        val titleNumber = category(R.string.number_input_setting)
+        val numberKeyboardCompatibleInput = switch(
+            R.string.number_keyboard_compatible_input, "number_keyboard_compatible_input", true,
+            R.string.number_keyboard_compatible_input_summary
+        )
     }
 
     inner class KeyboardSetting : ManagedPreferenceCategory(R.string.setting_ime_keyboard, sharedPreferences) {

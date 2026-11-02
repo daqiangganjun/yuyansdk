@@ -1,6 +1,6 @@
 # 语燕输入法SDK
 
-本分支的终端模式入口位于键盘「更多」页，英文直输、中文沿用既有方案，中英切换键保留。`keyboard/terminal/TerminalInputDispatcher.kt` 统一发送字母、符号与特殊键的修饰组合，符号和数字布局切换保留待用状态；编辑及数字等工具布局不触发词库方案校验。方向与粘贴使用原有编辑小键盘。终端顶栏依次为 TAB、ESC、CTRL、ALT、PGUP、PGDN 和更多；扩展区仅显示 SHIFT、DEL、F(n)、^C、^D、^Z、^L 单行功能键，移除 F1–F12 及下方符号行，不保留固定高度或空白占位。点击 F(n) 临时显示数字键盘，编号1到12实时更新按钮，再次点击发送标准功能键并恢复原容器，保留待用修饰键；退格改号，空号再点或长按取消。临时切换仅改变视图，不改变语言、中文方案或默认模式。
+本分支的终端模式入口位于键盘「更多」页，英文直输、中文沿用既有方案，中英切换键保留。`keyboard/terminal/TerminalInputDispatcher.kt` 统一发送字母、符号与特殊键的修饰组合，符号和数字布局切换保留待用状态；编辑及数字等工具布局不触发词库方案校验。方向与粘贴使用原有编辑小键盘。「输入设置 → 数字输入」的「数字键盘兼容输入」使用偏好 `number_keyboard_compatible_input`，默认开启，仅将数字键盘0–9按文本提交；关闭后仍发送数字按键，终端修饰组合和 F(n) 编号处理不受此开关影响。终端顶栏依次为 TAB、ESC、CTRL、ALT、PGUP、PGDN 和更多；扩展区仅显示 SHIFT、DEL、F(n)、^C、^D、^Z、^L 单行功能键，移除 F1–F12 及下方符号行，不保留固定高度或空白占位。点击 F(n) 临时显示数字键盘，编号1到12实时更新按钮，再次点击发送标准功能键并恢复原容器，保留待用修饰键；退格改号，空号再点或长按取消。临时切换仅改变视图，不改变语言、中文方案或默认模式。
 
 `view/KeyboardAuxiliaryPanel.kt` 将终端快捷键与花漾字原文处理栏分别挂载在候选栏下方和上方。花漾字启用后持续显示处理栏，原文通过本地 `BaseInputConnection` 编辑，宿主连接接收实时组合预览；完成后提交当前一段、清空原文并继续聚焦，空内容取消模式。点击宿主切回原始输入，点击处理框恢复处理；内部弹出菜单和编辑工具条不会触发原始输入切换。模式与上次样式使用 `flower_typeface_mode` 和 `last_flower_typeface_mode` 偏好保存。`TextTransformer`、`TextTransformers.register()` 与 `TextTransformSession` 保留通用异步转换接口供后续翻译复用，当前 UI 只显示花漾字处理，不提供独立转换入口。Room 8→9 仅清理旧 TextTransform 菜单，剪贴板锁定功能保留，顶栏依次显示删除、锁定、常用语和原位剪贴板。Android 回归测试显式使用项目已有的 ConstraintLayout 2.2.0。
 
@@ -16,7 +16,7 @@
 **谨遵循必要、最小权限，只为输入而生，更纯净、安全、高效。**  
 普通键盘输入在本机完成。可选语音输入使用网络和麦克风权限，仅在用户长按空格时录音并发送给所选供应商，不保存录音文件；手写模型首次下载使用网络，之后在本机识别。不访问位置、联系人或共享存储。
 
-语音供应商通过 `speech/SpeechProvider.kt` 的 `SpeechProvider`、`SpeechSession` 和 `SpeechListener` 接口接入，以 `SpeechProviders.register()` 注册；各供应商独立声明 `options`，设置页自动生成控件并按供应商保存参数。当前实现为豆包 WebSocket 流式识别，采用 16 kHz、16 bit、单声道 PCM；长按空格开始、松开结束，最终结果上屏。「检查连接」通过同一公共接口发送内置测试语音，检查当前密钥、资源和参数并展示结果，不使用麦克风，离开页面或修改配置会取消检查。运行时 API Key 使用 Android Keystore 加密保存于 `noBackupFilesDir`，不写入默认偏好或构建配置。
+语音供应商通过 `speech/SpeechProvider.kt` 的 `SpeechProvider`、`SpeechSession` 和 `SpeechListener` 接口接入，以 `SpeechProviders.register()` 注册；各供应商独立声明 `options`，设置页自动生成控件并按供应商保存参数。当前实现为豆包 WebSocket 流式识别，采用 16 kHz、16 bit、单声道 PCM；长按空格开始、松开结束，最终结果通过 `InputView.commitExternalText()` 与剪贴板条目共用提交路径；仍校验活动输入目标，取消后丢弃本次缓存文本，空结束帧复用本次最近非空结果。语音面板固定为当前键盘宽度，避免 MATCH_PARENT 撑大悬浮根布局；首次圆角轮廓在初始主题应用前完成初始化。「检查连接」通过同一公共接口发送内置测试语音，检查当前密钥、资源和参数并展示结果，不使用麦克风，离开页面或修改配置会取消检查。运行时 API Key 使用 Android Keystore 加密保存于 `noBackupFilesDir`，不写入默认偏好或构建配置。
 ### 源于Rime，但更易用。
 当前开放的输入法引擎中，[Rime引擎](https://github.com/rime/librime)已经趋向完善。然而对于非技术流用户来说，上手却并不容易，各种输入方案定制、兼容、编译问题，以及键盘的界面效果优化问题不断，这是开源软件的通病。  
 **但我想要开发出一款基于Rime引擎的安装即用，让没时间研究Rime的人也能用上好用的输入法；**

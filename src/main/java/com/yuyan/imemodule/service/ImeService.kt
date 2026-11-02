@@ -54,7 +54,9 @@ class ImeService : InputMethodService() {
     fun startVoiceInput() {
         val view = mInputView ?: return
         if (voiceInput == null) {
-            voiceInput = VoiceInputController(this, view.mSkbRoot) { view.resetToIdleState() }
+            voiceInput = VoiceInputController(this, view.mSkbRoot,
+                prepareInput = { view.auxiliaryPanel.cancelFunctionKeyInput(); view.resetToIdleState() },
+                commitResult = view::commitExternalText)
         }
         voiceInput?.start()
     }
