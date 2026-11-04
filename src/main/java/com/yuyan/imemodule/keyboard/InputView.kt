@@ -46,6 +46,7 @@ import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.libs.pinyin4j.PolyphoneReading
 import com.yuyan.imemodule.keyboard.container.CandidatesContainer
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
+import com.yuyan.imemodule.keyboard.container.HandwritingContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
 import com.yuyan.imemodule.keyboard.container.InputBaseContainer
@@ -87,6 +88,39 @@ import kotlin.math.absoluteValue
  */
 @SuppressLint("ViewConstructor")
 class InputView(context: Context, private val service: ImeService) : LifecycleRelativeLayout(context), IResponseKeyEvent {
+    private var handwritingTouchTarget: HandwritingKeyboard? = null
+    private val inputTouchLocation = IntArray(2)
+    private val handwritingTouchLocation = IntArray(2)
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val container = KeyboardManager.instance.currentContainer as? HandwritingContainer
+            handwritingTouchTarget = container?.handwritingKeyboard?.takeIf {
+                it.isShown && it.canContinueWriting(event.eventTime)
+            }
+        }
+        val target = handwritingTouchTarget ?: return super.dispatchTouchEvent(event)
+        // 侧边符号、候选栏和工具栏不属于手写视图，须在分发到这些控件之前接管整个手势。
+        if (target.isShown && target.isAttachedToWindow && InputModeSwitcher.isChineseHandWriting) {
+            getLocationOnScreen(inputTouchLocation)
+            target.getLocationOnScreen(handwritingTouchLocation)
+            val inkEvent = MotionEvent.obtain(event)
+            try {
+                inkEvent.offsetLocation(
+                    (inputTouchLocation[0] - handwritingTouchLocation[0]).toFloat(),
+                    (inputTouchLocation[1] - handwritingTouchLocation[1]).toFloat(),
+                )
+                target.dispatchTouchEvent(inkEvent)
+            } finally {
+                inkEvent.recycle()
+            }
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            handwritingTouchTarget = null
+        }
+        return true
+    }
+
     fun startVoiceInput() = service.startVoiceInput()
     fun finishVoiceInput() = service.finishVoiceInput()
     fun cancelVoiceInput() = service.cancelVoiceInput()
@@ -1329,6 +1363,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onWindowHidden() {
+        handwritingTouchTarget = null
         finishAuxiliaryInput()
         if (isAddPhrases) {
             isAddPhrases = false

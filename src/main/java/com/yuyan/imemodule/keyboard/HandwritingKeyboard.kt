@@ -74,14 +74,24 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
         invalidate()
     }
 
+    /** 停笔前的后续落笔属于同一个字；即使定时消息尚未执行，也按事件时间结束书写。 */
+    fun canContinueWriting(eventTime: Long): Boolean {
+        if (!isEnabled || !InputModeSwitcher.isChineseHandWriting || !session.isWriting) return false
+        if (!handwritingGesture && mLastUpTime != 0L && eventTime - mLastUpTime >= pauseMillis) {
+            removeCallbacks(stopWriting)
+            stopWriting.run()
+        }
+        return session.isWriting
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(me: MotionEvent): Boolean {
         if (me.actionMasked == MotionEvent.ACTION_DOWN) {
+            val continuing = canContinueWriting(me.eventTime)
             handwritingGesture = isEnabled && InputModeSwitcher.isChineseHandWriting &&
-                mSoftKeyboard?.mapToKey(me.x.toInt(), me.y.toInt()) == null
+                (continuing || mSoftKeyboard?.mapToKey(me.x.toInt(), me.y.toInt()) == null)
             if (handwritingGesture) {
                 removeCallbacks(stopWriting)
-                if (mLastUpTime != 0L && me.eventTime - mLastUpTime >= pauseMillis) session.stopWriting()
                 if (session.isStopped) clear()
                 activePointer = me.getPointerId(0)
                 val paintWidth = getInstance().handwriting.handWritingWidth.getValue().coerceAtLeast(1) * 4 / 10f

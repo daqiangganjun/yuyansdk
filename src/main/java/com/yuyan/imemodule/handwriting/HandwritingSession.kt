@@ -23,6 +23,7 @@ class HandwritingSession(
     private var preview: String? = null
     val hasInput: Boolean get() = characters.isNotEmpty()
     val isStopped: Boolean get() = current?.stopped == true
+    val isWriting: Boolean get() = current?.stopped == false
 
     fun beginStroke(x: Float, y: Float, time: Long) {
         if (current?.stopped == true) {
