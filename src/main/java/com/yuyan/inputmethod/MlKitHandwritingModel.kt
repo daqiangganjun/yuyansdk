@@ -77,7 +77,7 @@ object MlKitHandwritingModel {
                 if (state == State.Downloading) return@addOnSuccessListener
                 if (downloaded) {
                     ensureRecognizer()
-                    update(State.Downloaded)
+                    update(if (recognizer != null) State.Downloaded else State.Failed("Unable to initialize handwriting recognizer"))
                 } else {
                     update(State.NotDownloaded)
                 }
@@ -102,7 +102,7 @@ object MlKitHandwritingModel {
             .download(model, DownloadConditions.Builder().build())
             .addOnSuccessListener {
                 ensureRecognizer()
-                update(State.Downloaded)
+                update(if (recognizer != null) State.Downloaded else State.Failed("Unable to initialize handwriting recognizer"))
             }
             .addOnFailureListener { e ->
                 // 无 Google Play 服务或无法连通 Google 服务器时会走到这里

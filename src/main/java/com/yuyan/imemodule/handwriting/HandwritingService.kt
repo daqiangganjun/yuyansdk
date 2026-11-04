@@ -10,6 +10,7 @@ import android.os.Message
 import android.os.Messenger
 import android.os.Process
 import android.os.RemoteException
+import android.util.Log
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.google.mlkit.common.MlKit
@@ -27,9 +28,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 class HandwritingService : Service() {
 
     private val clients = CopyOnWriteArrayList<Messenger>()
+    private val pendingRecognition = ArrayList<Message>()
 
     private val stateListener: (MlKitHandwritingModel.State) -> Unit = { state ->
         broadcast(stateMessage(state))
+        if (state != MlKitHandwritingModel.State.Unknown && state != MlKitHandwritingModel.State.Downloading) {
+            val waiting = pendingRecognition.toList()
+            pendingRecognition.clear()
+            waiting.forEach { recognize(it.data, it.replyTo, it.arg1) }
+        }
     }
 
     private val messenger = Messenger(Handler(Looper.getMainLooper()) { msg ->
@@ -65,7 +72,11 @@ class HandwritingService : Service() {
                 send(client, stateMessage(MlKitHandwritingModel.state))
                 MlKitHandwritingModel.refreshState()
             }
-            HandwritingProtocol.MSG_UNREGISTER -> clients.remove(msg.replyTo)
+            HandwritingProtocol.MSG_UNREGISTER -> {
+                clients.remove(msg.replyTo)
+                pendingRecognition.removeAll { it.replyTo == msg.replyTo }
+            }
+            HandwritingProtocol.MSG_CANCEL -> pendingRecognition.removeAll { it.arg1 == msg.arg1 && it.replyTo == msg.replyTo }
             HandwritingProtocol.MSG_RECOGNIZE -> recognize(msg.data, msg.replyTo, msg.arg1)
             HandwritingProtocol.MSG_DOWNLOAD -> MlKitHandwritingModel.download()
             HandwritingProtocol.MSG_DELETE -> MlKitHandwritingModel.delete()
@@ -74,18 +85,40 @@ class HandwritingService : Service() {
     }
 
     private fun recognize(data: Bundle?, client: Messenger?, requestId: Int) {
-        if (data == null || client == null) return
-        val recognizer = MlKitHandwritingModel.recognizerOrNull() ?: return
-        val ink = buildInk(data) ?: return
-        recognizer.recognize(ink).addOnSuccessListener { result ->
-            val texts = result.candidates.mapNotNull { it.text?.takeIf(String::isNotEmpty) }
-            if (texts.isEmpty()) return@addOnSuccessListener
-            val reply = Message.obtain(null, HandwritingProtocol.MSG_RESULT, requestId, 0)
-            reply.data = Bundle().apply {
-                putStringArray(HandwritingProtocol.KEY_TEXTS, texts.toTypedArray())
-            }
-            send(client, reply)
+        if (client == null) return
+        val recognizer = MlKitHandwritingModel.recognizerOrNull()
+        if (recognizer == null) {
+            if (MlKitHandwritingModel.state == MlKitHandwritingModel.State.Unknown) {
+                pendingRecognition.add(Message.obtain(null, HandwritingProtocol.MSG_RECOGNIZE, requestId, 0).apply {
+                    this.data = data
+                    replyTo = client
+                })
+            } else reply(client, requestId, HandwritingProtocol.RESULT_UNAVAILABLE)
+            return
         }
+        val ink = data?.let(::buildInk)
+        if (ink == null) {
+            reply(client, requestId, HandwritingProtocol.RESULT_FAILED)
+            return
+        }
+        try {
+            recognizer.recognize(ink).addOnSuccessListener { result ->
+                val texts = result.candidates.mapNotNull { it.text?.takeIf(String::isNotBlank) }.distinct()
+                reply(client, requestId, HandwritingProtocol.RESULT_OK, texts)
+            }.addOnFailureListener { error ->
+                Log.w("HandwritingService", "Handwriting recognition failed", error)
+                reply(client, requestId, HandwritingProtocol.RESULT_FAILED)
+            }
+        } catch (error: Exception) {
+            Log.w("HandwritingService", "Unable to start handwriting recognition", error)
+            reply(client, requestId, HandwritingProtocol.RESULT_FAILED)
+        }
+    }
+
+    private fun reply(client: Messenger, requestId: Int, code: Int, texts: List<String> = emptyList()) {
+        send(client, Message.obtain(null, HandwritingProtocol.MSG_RESULT, requestId, code).apply {
+            data = Bundle().apply { putStringArray(HandwritingProtocol.KEY_TEXTS, texts.toTypedArray()) }
+        })
     }
 
     /** 由平铺的点序列还原 ML Kit 笔迹。拼音标注留给主进程，本进程只回文本。 */
@@ -94,14 +127,14 @@ class HandwritingService : Service() {
         val ys = data.getFloatArray(HandwritingProtocol.KEY_Y) ?: return null
         val times = data.getLongArray(HandwritingProtocol.KEY_TIME) ?: return null
         val ends = data.getIntArray(HandwritingProtocol.KEY_STROKE_END) ?: return null
-        if (ends.isEmpty() || xs.size != ys.size || xs.size != times.size) return null
+        if (ends.isEmpty() || xs.size != ys.size || xs.size != times.size ||
+            xs.any { !it.isFinite() } || ys.any { !it.isFinite() }) return null
         val builder = Ink.builder()
         var start = 0
         var strokeCount = 0
         for (end in ends) {
             if (end <= start || end > xs.size) {
-                start = end
-                continue
+                return null
             }
             val stroke = Ink.Stroke.builder()
             for (i in start until end) stroke.addPoint(Ink.Point.create(xs[i], ys[i], times[i]))

@@ -34,8 +34,11 @@ class KeyboardManager {
         private set
     val currentKeyboardType: KeyboardType?
         get() = if (currentContainer != null) mCurrentKeyboardName else null
+    val handwritingKeyboard: HandwritingKeyboard?
+        get() = (keyboards[KeyboardType.HANDWRITING] as? HandwritingContainer)?.handwritingKeyboard
 
     fun setData(keyboardRootView: InputViewParent, inputView: InputView) {
+        mInputView?.finishHandwritingComposing()
         keyboards.clear() // TODO 清空缓存界面，发现调用 PinyinService.onCreateInputView时，原输入界面全部会失效。
         mKeyboardRootView = keyboardRootView
         mInputView = inputView
@@ -43,6 +46,7 @@ class KeyboardManager {
     }
 
     fun clearKeyboard() {
+        mInputView?.finishHandwritingComposing()
         keyboards.clear()
         mKeyboardRootView?.clearViews()
         currentContainer = null
@@ -72,6 +76,7 @@ class KeyboardManager {
      * 整棵输入视图树连同其持有的 Service Context 都无法回收。
      */
     fun release() {
+        mInputView?.finishHandwritingComposing()
         syncHandwritingBinding(false)
         keyboards.clear()
         currentContainer = null
@@ -108,8 +113,12 @@ class KeyboardManager {
     fun switchKeyboard(keyboardName: KeyboardType) {
         val rootView = mKeyboardRootView ?: return
         val inputView = mInputView ?: return
+        if (keyboardName != KeyboardType.HANDWRITING && keyboardName != KeyboardType.CANDIDATES) {
+            inputView.finishHandwritingComposing()
+        }
         // 先于容器创建，使 HandwritingContainer 初始化时绑定已在建立
-        syncHandwritingBinding(keyboardName == KeyboardType.HANDWRITING)
+        syncHandwritingBinding(keyboardName == KeyboardType.HANDWRITING ||
+            keyboardName == KeyboardType.CANDIDATES && handwritingBound)
         var container = keyboards[keyboardName]
         if (container == null) {
             container = when (keyboardName) {

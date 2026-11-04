@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.PorterDuff
 import android.view.MotionEvent
 import androidx.core.graphics.createBitmap
 import com.yuyan.imemodule.data.theme.Theme
@@ -12,19 +13,10 @@ import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.entity.handwriting.Bezier
 import com.yuyan.imemodule.entity.handwriting.ControlTimedPoints
 import com.yuyan.imemodule.entity.handwriting.TimedPoint
-import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
-import com.yuyan.imemodule.R
 import com.yuyan.imemodule.handwriting.HandwritingClient
-import com.yuyan.imemodule.handwriting.InkStrokes
-import com.yuyan.imemodule.libs.pinyin4j.PinyinHelper
-import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinCaseType
-import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinOutputFormat
-import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinToneType
-import com.yuyan.imemodule.libs.pinyin4j.format.HanyuPinyinVCharType
-import com.yuyan.inputmethod.core.CandidateListItem
-import java.util.LinkedList
+import com.yuyan.imemodule.handwriting.HandwritingSession
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -34,12 +26,22 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
 
     private val mPointsCache: MutableList<TimedPoint> = ArrayList<TimedPoint>()
     private val mControlTimedPointsCached = ControlTimedPoints()
-    private var mLastUpTime: Long = 0 //记录上次手写抬手时间，与本次按下时间对比。
-    private var composed = false // 本字是否已由停笔定时置为组合文本，避免重复触发
-    private val mSBPoint: MutableList<Short?> = LinkedList()
-    // 识别所需的笔迹：按笔划组织、每点带时间戳，与上面的 mSBPoint 并行采集。
-    // 刻意不使用 ML Kit 的 Ink 类型——那会把 ML Kit 加载进主进程，令进程隔离失效。
-    private val mInkStrokes = InkStrokes()
+    private var mLastUpTime = 0L
+    private var handwritingGesture = false
+    private var activePointer = -1
+    private val pauseMillis: Long
+        get() = getInstance().handwriting.handWritingSpeed.getValue().toLong().coerceIn(300, 1300)
+    private val session = HandwritingSession(
+        recognize = HandwritingClient::requestRecognition,
+        onUpdate = { result, pending -> mService?.showHandwritingResult(result, pending) },
+        onPreview = { mService?.previewHandwriting(it) },
+        onCommit = { mService?.commitHandwriting(it) },
+    )
+    val hasHandwritingInput: Boolean get() = session.hasInput
+    private val stopWriting = Runnable {
+        session.stopWriting()
+        clear()
+    }
     private var mPoints: MutableList<TimedPoint> =  ArrayList<TimedPoint>()
     private var mLastVelocity = 0f
     private var mLastWidth = 0f
@@ -49,12 +51,6 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     private val mPaint = Paint()
     private var mSignatureBitmap: Bitmap? = null
     private var mSignatureBitmapCanvas: Canvas? = null
-    private val times = 1200L - getInstance().handwriting.handWritingSpeed.getValue()  // 默认1.3s
-    private val pinyinFormat = HanyuPinyinOutputFormat().apply {
-        caseType = HanyuPinyinCaseType.LOWERCASE
-        toneType = HanyuPinyinToneType.WITH_TONE_MARK
-        vCharType = HanyuPinyinVCharType.WITH_U_UNICODE
-    }
 
     init {
         this.mPaint.setColor(ThemeManager.activeTheme.keyTextColor)
@@ -74,61 +70,113 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
         mPoints.clear()
         mLastVelocity = 0f
         mLastWidth = mMinWidth.toFloat()
-        if (mSignatureBitmap != null) {
-            mSignatureBitmap = null
-            ensureSignatureBitmap()
-        }
+        mSignatureBitmapCanvas?.drawColor(android.graphics.Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         invalidate()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(me: MotionEvent): Boolean {
-        if(!isEnabled || !InputModeSwitcher.isChineseHandWriting || mLongPressKey) {
-            return super.onTouchEvent(me)
-        }
-        val eventX = me.x
-        val eventY = me.y
-        val softKey = onKeyPressHandwriting(eventX.toInt(), eventY.toInt())
-        if (softKey != null) {
-            return super.onTouchEvent(me)
-        }
-        mSBPoint.add(me.x.toInt().toShort())
-        mSBPoint.add(me.y.toInt().toShort())
-        when (me.action) {
-            MotionEvent.ACTION_DOWN -> {
-                val paintWidthMax = getInstance().handwriting.handWritingWidth.getValue() * 4 / 10f
-                mMaxWidth = convertDpToPx(paintWidthMax)
-                mMinWidth = convertDpToPx(paintWidthMax/2f)
-                parent.requestDisallowInterceptTouchEvent(true)
+        if (me.actionMasked == MotionEvent.ACTION_DOWN) {
+            handwritingGesture = isEnabled && InputModeSwitcher.isChineseHandWriting &&
+                mSoftKeyboard?.mapToKey(me.x.toInt(), me.y.toInt()) == null
+            if (handwritingGesture) {
+                removeCallbacks(stopWriting)
+                if (mLastUpTime != 0L && me.eventTime - mLastUpTime >= pauseMillis) session.stopWriting()
+                if (session.isStopped) clear()
+                activePointer = me.getPointerId(0)
+                val paintWidth = getInstance().handwriting.handWritingWidth.getValue().coerceAtLeast(1) * 4 / 10f
+                mMaxWidth = convertDpToPx(paintWidth).coerceAtLeast(1)
+                mMinWidth = convertDpToPx(paintWidth / 2).coerceAtLeast(1)
                 mPoints.clear()
-                addPoint(getNewPoint(eventX, eventY))
-                if (mLastUpTime != 0L && System.currentTimeMillis() - mLastUpTime > times) {
-                    // 开始写新字：上一个字若仍处于组合态就此落定，尚未进入组合态的则先补上
-                    mService?.confirmHandwritingBeforeNewChar()
-                    resetForNewChar()
+                mLastVelocity = 0f
+                mLastWidth = mMinWidth.toFloat()
+                parent?.requestDisallowInterceptTouchEvent(true)
+                session.beginStroke(me.x, me.y, me.eventTime)
+                addPoint(getNewPoint(me.x, me.y))
+                ensureSignatureBitmap()
+                mPaint.strokeWidth = mLastWidth
+                mSignatureBitmapCanvas?.drawPoint(me.x, me.y, mPaint)
+            }
+        }
+        if (!handwritingGesture) return super.onTouchEvent(me)
+        val pointer = me.findPointerIndex(activePointer)
+        when (me.actionMasked) {
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (pointer < 0) {
+                    cancelHandwriting()
+                    return true
                 }
-                addInkPoint(eventX, eventY)
+                if (me.actionMasked == MotionEvent.ACTION_POINTER_UP && me.actionIndex != pointer) return true
+                for (index in 0 until me.historySize) {
+                    recordPoint(me.getHistoricalX(pointer, index), me.getHistoricalY(pointer, index), me.getHistoricalEventTime(index))
+                }
+                val x = me.getX(pointer)
+                val y = me.getY(pointer)
+                recordPoint(x, y, me.eventTime)
+                if (me.actionMasked != MotionEvent.ACTION_MOVE) {
+                    // 贝塞尔平滑保留了尾点，抬手时补齐，保证短笔画也可见。
+                    repeat(2) { addPoint(getNewPoint(x, y)) }
+                    session.endStroke()
+                    handwritingGesture = false
+                    activePointer = -1
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    mLastUpTime = me.eventTime
+                    postDelayed(stopWriting, pauseMillis)
+                }
             }
-            MotionEvent.ACTION_MOVE -> {
-                addPoint(getNewPoint(eventX, eventY))
-                addInkPoint(eventX, eventY)
-                updatePathDelayed()
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                addPoint(getNewPoint(eventX, eventY))
-                parent.requestDisallowInterceptTouchEvent(true)
-                mLastUpTime = System.currentTimeMillis()
-                mSBPoint.add(-1)
-                mSBPoint.add(0)
-                addInkPoint(eventX, eventY)
-                mInkStrokes.endStroke()
-                recognitionData()
-                updatePathDelayed()
-            }
-            else -> return false
+            MotionEvent.ACTION_CANCEL -> cancelHandwriting()
         }
         invalidate()
         return true
+    }
+
+    private fun recordPoint(x: Float, y: Float, time: Long) {
+        addPoint(getNewPoint(x, y))
+        session.addPoint(x, y, time)
+    }
+
+    private fun cancelHandwriting() {
+        mService?.cancelHandwritingInput()
+        resetForNewChar()
+    }
+
+    fun chooseCandidate(index: Int): Boolean {
+        if (!session.choose(index)) return false
+        clearGesture()
+        return true
+    }
+
+    fun confirmReady() {
+        session.confirmReady()
+        clearGesture()
+    }
+
+    fun resetForNewChar() {
+        session.reset()
+        clearGesture()
+    }
+
+    private fun clearGesture() {
+        removeCallbacks(stopWriting)
+        handwritingGesture = false
+        activePointer = -1
+        mLastUpTime = 0
+        parent?.requestDisallowInterceptTouchEvent(false)
+        clear()
+    }
+
+    override fun onDetachedFromWindow() {
+        mService?.finishHandwritingComposing()
+        resetForNewChar()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw || h != oldh) {
+            mSignatureBitmap = null
+            mSignatureBitmapCanvas = null
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -199,7 +247,7 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
             y += 3 * u * tt * curve.control2.y
             y += ttt * curve.endPoint.y
             mPaint.setStrokeWidth(startWidth + ttt * widthDelta)
-            mSignatureBitmapCanvas!!.drawPoint(x, y, mPaint)
+            mSignatureBitmapCanvas?.drawPoint(x, y, mPaint)
             i++
         }
         mPaint.setStrokeWidth(originalWidth)
@@ -235,7 +283,7 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
     }
 
     private fun ensureSignatureBitmap() {
-        if (mSignatureBitmap == null) {
+        if (mSignatureBitmap == null && width > 0 && height > 0) {
             mSignatureBitmap = createBitmap(width, height)
             mSignatureBitmapCanvas = Canvas(mSignatureBitmap!!)
         }
@@ -245,73 +293,4 @@ class HandwritingKeyboard(context: Context?) : TextKeyboard(context) {
         return (context.resources.displayMetrics.density * dp).roundToInt()
     }
 
-    /**
-     * 手写键盘获取按下按键
-     */
-    private fun onKeyPressHandwriting(x: Int, y: Int): SoftKey? {
-        return mSoftKeyboard!!.mapToKey(x, y)
-    }
-
-    private fun recognitionData() {
-        if (!HandwritingClient.isReady) {
-            // 提示与下载入口由覆盖在手写区域上的 HandwritingModelTipView 常驻呈现，
-            // 此处只需触发一次状态刷新即可
-            HandwritingClient.refresh()
-            return
-        }
-        HandwritingClient.recognize(mInkStrokes) { texts ->
-            // 手写进程只回文本，拼音标注在主进程完成，以免 :hw 再加载一份 pinyin4j 词表
-            val items = texts.map { text ->
-                CandidateListItem(
-                    PinyinHelper.toHanYuPinyin(text, pinyinFormat, "'").ifEmpty { text },
-                    text
-                )
-            }.toTypedArray()
-            mService?.postDelayed({ mService!!.responseHandwritingResultEvent(items) }, 20)
-        }
-    }
-
-    private fun addInkPoint(x: Float, y: Float) {
-        mInkStrokes.addPoint(x, y, System.currentTimeMillis())
-    }
-
-    /** 一个字书写完毕后重置笔迹，避免下一个字带上上一个字的笔划 */
-    private fun resetInk() {
-        mInkStrokes.clear()
-    }
-
-    /**
-     * 上一个字已确认，就此另起一字。
-     *
-     * 落笔时的停笔超时判断只能识别「写完停顿再写」，用户若选完候选立刻书写，
-     * 新笔划会叠加到上一个字上，故确认候选后须显式重置。
-     */
-    fun resetForNewChar() {
-        composed = false
-        mLastUpTime = 0
-        mSBPoint.clear()
-        resetInk()
-        clear()
-    }
-
-    fun updatePathDelayed() {
-        runnable.let { handler?.removeCallbacks(it) }
-        handler?.postDelayed(runnable, times)
-    }
-
-    // 清空笔迹
-    var runnable = Runnable {
-        composeHandwritingResult()
-        clear()
-    }
-
-    /**
-     * 停笔超过设定时长即把首选置为组合文本：带下划线显示于输入框但尚未落定，
-     * 候选列表保留，用户可继续改选，也可不管它直接写下一个字。
-     */
-    private fun composeHandwritingResult() {
-        if (composed || mSBPoint.isEmpty()) return
-        mService?.composeHandwritingFirstCandidate()
-        composed = true
-    }
 }

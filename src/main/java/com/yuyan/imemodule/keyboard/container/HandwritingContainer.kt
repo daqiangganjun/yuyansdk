@@ -40,6 +40,7 @@ import splitties.views.dsl.core.matchParent
  */
 @SuppressLint("ViewConstructor")
 class HandwritingContainer(context: Context?, inputView: InputView) : InputBaseContainer(context, inputView) {
+    val handwritingKeyboard: HandwritingKeyboard? get() = mMajorView as? HandwritingKeyboard
     private val mSideSymbolsPinyin:List<SideSymbol>
     private var mModelTipView: HandwritingModelTipView? = null
     // 键盘界面上符号(T9左侧、手写右侧)

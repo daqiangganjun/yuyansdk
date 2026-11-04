@@ -40,7 +40,9 @@ object HandwritingClient {
     private var bound = false
     private var releasePending = false
     private var requestId = 0
-    private var resultCallback: ((Array<String>) -> Unit)? = null
+    private val main = Handler(Looper.getMainLooper())
+    private class Recognition(val callback: (HandwritingResult) -> Unit, val timeout: Runnable)
+    private val requests = HashMap<Int, Recognition>()
 
     /** 绑定完成前发起的请求暂存于此，连接建立后补发 */
     private val pending = ArrayList<Message>()
@@ -49,11 +51,12 @@ object HandwritingClient {
         when (msg.what) {
             HandwritingProtocol.MSG_STATE -> updateState(parseState(msg))
             HandwritingProtocol.MSG_RESULT -> {
-                // 手写为连续输入，仅最新一次请求的结果有效
-                if (msg.arg1 == requestId) {
-                    msg.data?.getStringArray(HandwritingProtocol.KEY_TEXTS)
-                        ?.let { resultCallback?.invoke(it) }
-                }
+                val texts = msg.data.getStringArray(HandwritingProtocol.KEY_TEXTS).orEmpty().filter(String::isNotBlank).distinct()
+                complete(msg.arg1, when (msg.arg2) {
+                    HandwritingProtocol.RESULT_UNAVAILABLE -> HandwritingResult.Unavailable
+                    HandwritingProtocol.RESULT_FAILED -> HandwritingResult.Failed
+                    else -> if (texts.isEmpty()) HandwritingResult.Empty else HandwritingResult.Candidates(texts)
+                })
             }
         }
         true
@@ -71,6 +74,7 @@ object HandwritingClient {
         override fun onServiceDisconnected(name: ComponentName?) {
             // 进程已终止（正常解绑或被系统回收），状态回落待下次绑定重新查询
             service = null
+            failRequests()
             updateState(HandwritingState.Unknown)
         }
     }
@@ -96,11 +100,16 @@ object HandwritingClient {
         releasePending = false
         if (bound) return
         bound = true
-        appContext?.bindService(
+        val connected = appContext?.bindService(
             Intent(appContext, HandwritingService::class.java),
             connection,
             Context.BIND_AUTO_CREATE
-        )
+        ) == true
+        if (!connected) {
+            bound = false
+            failRequests()
+            updateState(HandwritingState.Failed("Unable to bind handwriting service"))
+        }
     }
 
     /** 离开手写场景。计数归零即解绑，:hw 进程随之终止 */
@@ -115,11 +124,51 @@ object HandwritingClient {
     }
 
     fun recognize(strokes: InkStrokes, callback: (Array<String>) -> Unit) {
-        if (strokes.isEmpty) return
-        resultCallback = callback
-        val message = Message.obtain(null, HandwritingProtocol.MSG_RECOGNIZE, ++requestId, 0)
+        requestRecognition(strokes) { result ->
+            callback((result as? HandwritingResult.Candidates)?.texts?.toTypedArray() ?: emptyArray())
+        }
+    }
+
+    fun requestRecognition(strokes: InkStrokes, callback: (HandwritingResult) -> Unit): () -> Unit {
+        val id = ++requestId
+        val timeout = Runnable {
+            cancelRemote(id)
+            complete(id, HandwritingResult.TimedOut)
+        }
+        requests[id] = Recognition(callback, timeout)
+        main.postDelayed(timeout, 10_000)
+        if (strokes.isEmpty || !bound) {
+            main.post { complete(id, if (strokes.isEmpty) HandwritingResult.Empty else HandwritingResult.Unavailable) }
+            return { cancel(id) }
+        }
+        val message = Message.obtain(null, HandwritingProtocol.MSG_RECOGNIZE, id, 0)
         message.data = strokes.toBundle()
         dispatch(message)
+        return { cancel(id) }
+    }
+
+    private fun complete(id: Int, result: HandwritingResult) {
+        val request = requests.remove(id) ?: return
+        main.removeCallbacks(request.timeout)
+        request.callback(result)
+    }
+
+    private fun cancel(id: Int) {
+        val request = requests.remove(id) ?: return
+        main.removeCallbacks(request.timeout)
+        cancelRemote(id)
+    }
+
+    private fun cancelRemote(id: Int) {
+        pending.removeAll { it.what == HandwritingProtocol.MSG_RECOGNIZE && it.arg1 == id }
+        service?.let { target ->
+            runCatching { target.send(Message.obtain(null, HandwritingProtocol.MSG_CANCEL, id, 0).apply { replyTo = incoming }) }
+        }
+    }
+
+    private fun failRequests() {
+        pending.removeAll { it.what == HandwritingProtocol.MSG_RECOGNIZE }
+        requests.keys.toList().forEach { complete(it, HandwritingResult.Unavailable) }
     }
 
     fun download() = dispatch(Message.obtain(null, HandwritingProtocol.MSG_DOWNLOAD))
@@ -130,6 +179,7 @@ object HandwritingClient {
 
     private fun unbind() {
         releasePending = false
+        failRequests()
         if (!bound) return
         bound = false
         service?.let {
@@ -154,11 +204,10 @@ object HandwritingClient {
                 return
             } catch (_: RemoteException) {
                 service = null
+                failRequests()
+                updateState(HandwritingState.Unknown)
+                return
             }
-        }
-        // 尚未连接：识别请求只保留最新一条，避免补发时涌入过期笔迹
-        if (message.what == HandwritingProtocol.MSG_RECOGNIZE) {
-            pending.removeAll { it.what == HandwritingProtocol.MSG_RECOGNIZE }
         }
         pending.add(message)
     }

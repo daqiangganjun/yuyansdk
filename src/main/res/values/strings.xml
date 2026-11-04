@@ -69,6 +69,11 @@
     <string name="paint_thickness">笔画粗细</string>
     <string name="discern_sensitive">识别灵敏度</string>
     <string name="hw_model_title">手写识别模型</string>
+    <string name="hw_recognizing">正在识别…</string>
+    <string name="hw_unrecognized">无法识别，请重新书写</string>
+    <string name="hw_recognition_failed">识别失败，请重新书写</string>
+    <string name="hw_recognition_timeout">识别超时，请重新书写</string>
+    <string name="hw_recognition_unavailable">手写模型未就绪，请检查手写设置</string>
     <string name="hw_model_state_unknown">正在查询状态…</string>
     <string name="hw_model_state_not_downloaded">未下载，点击下载（约 20MB，需联网）</string>
     <string name="hw_model_state_downloading">正在下载…</string>

@@ -11,6 +11,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.RelativeLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.OnScrollListener
@@ -54,6 +55,21 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
     private lateinit var mCandidatesMenuAdapter: CandidatesMenuAdapter
     private lateinit var candidatesData: LinearLayout //候选词视图
     private var activeCandNo:Int = 0
+    private var handwritingMessage: String? = null
+    private val handwritingStatus = TextView(context).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(16), 0, dp(16), 0)
+        textSize = 16f
+        isClickable = false
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        visibility = GONE
+    }
+
+    fun setHandwritingStatus(message: String?) {
+        handwritingMessage = message
+        handwritingStatus.text = message
+    }
 
     fun initialize(cvListener: CandidateViewListener) {
         mCvListener = cvListener
@@ -62,6 +78,7 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
         setPadding(0, instance.keyYMargin, 0, 0)
         initMenuView()
         initCandidateView()
+        if (handwritingStatus.parent == null) addView(handwritingStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
     // 初始化候选词界面
@@ -207,7 +224,7 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
     private var pendingMenuJob: Job? = null
     private val serviceScope = MainScope()
     fun scheduleShowCandidates() {
-        if (!DecodingInfo.isCandidatesEmpty) {
+        if (!DecodingInfo.isCandidatesEmpty || handwritingMessage != null) {
             pendingMenuJob?.cancel()
             pendingMenuJob = null
             showCandidates()
@@ -230,7 +247,9 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             SkbMenuMode.decodeOrNull(it.name)?.let(menuSkbFunsPreset::get)
         }
         mIvMenuSetting.drawable.setLevel( if(container is InputBaseContainer) 0 else 1)
-        if (container is ClipBoardContainer) {
+        if (handwritingMessage != null) {
+            showViewVisibility(handwritingStatus)
+        } else if (container is ClipBoardContainer) {
             showViewVisibility(mCandidatesMenuContainer)
             mCandidatesMenuAdapter.items = candidateToolbarItems(barItems, container.getMenuMode())
         } else if (DecodingInfo.isCandidatesEmpty) {
@@ -300,19 +319,16 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
     }
 
     private fun showViewVisibility(candidatesContainer: View) {
-        if(candidatesContainer === mCandidatesMenuContainer){
-            mCandidatesMenuContainer.visibility = VISIBLE
-            mCandidatesDataContainer.visibility = GONE
-        } else {
-            mCandidatesMenuContainer.visibility = GONE
-            mCandidatesDataContainer.visibility = VISIBLE
-        }
+        mCandidatesMenuContainer.visibility = if (candidatesContainer === mCandidatesMenuContainer) VISIBLE else GONE
+        mCandidatesDataContainer.visibility = if (candidatesContainer === mCandidatesDataContainer) VISIBLE else GONE
+        handwritingStatus.visibility = if (candidatesContainer === handwritingStatus) VISIBLE else GONE
     }
 
     // 刷新主题
     fun updateTheme(textColor: Int) {
         initMenuView()
         initCandidateView()
+        handwritingStatus.setTextColor(textColor)
         mIvMenuSetting.setImageResource(R.drawable.sdk_level_candidates_menu_left)
         mRightArrowBtn.drawable.setTint(textColor)
         mMenuRightArrowBtn.drawable.setTint(textColor)

@@ -46,7 +46,6 @@ import com.yuyan.imemodule.entity.keyboard.SoftKey
 import com.yuyan.imemodule.libs.pinyin4j.PolyphoneReading
 import com.yuyan.imemodule.keyboard.container.CandidatesContainer
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
-import com.yuyan.imemodule.keyboard.container.HandwritingContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
 import com.yuyan.imemodule.keyboard.container.InputBaseContainer
@@ -71,6 +70,7 @@ import com.yuyan.imemodule.utils.clipboardManager
 import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import com.yuyan.imemodule.view.widget.LifecycleRelativeLayout
+import com.yuyan.imemodule.handwriting.HandwritingResult
 import com.yuyan.inputmethod.CustomEngine
 import com.yuyan.inputmethod.EngineRuntime
 import com.yuyan.inputmethod.core.Rime
@@ -648,9 +648,34 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         if (SymbolPreset.containsKey(text)) commitPairSymbol(text) else commitText(text)
     }
 
-    override fun responseHandwritingResultEvent(words: Array<CandidateListItem>) {
-        DecodingInfo.cacheCandidates(words)
+    private var handwritingCandidates = false
+
+    fun showHandwritingResult(result: HandwritingResult?, pending: Boolean) {
+        val texts = (result as? HandwritingResult.Candidates)?.texts.orEmpty()
+        handwritingCandidates = texts.isNotEmpty()
+        val message = when {
+            pending -> R.string.hw_recognizing
+            result == HandwritingResult.Empty -> R.string.hw_unrecognized
+            result == HandwritingResult.Failed -> R.string.hw_recognition_failed
+            result == HandwritingResult.TimedOut -> R.string.hw_recognition_timeout
+            result == HandwritingResult.Unavailable -> R.string.hw_recognition_unavailable
+            else -> null
+        }
+        mSkbCandidatesBarView.setHandwritingStatus(message?.let(context::getString))
+        DecodingInfo.cacheCandidates(texts.map { CandidateListItem(PolyphoneReading.of(it), it) }.toTypedArray())
     }
+
+    fun previewHandwriting(text: String) = setHandwritingComposing(text)
+
+    fun commitHandwriting(text: String) {
+        handwritingComposing = null
+        handwritingReading = null
+        if (isAddPhrases) mAddPhrasesLayout.commitText(text) else service.commitText(text)
+        updateComposingBubble()
+    }
+
+    private val hasHandwritingInput: Boolean
+        get() = KeyboardManager.instance.handwritingKeyboard?.hasHandwritingInput == true
 
     override fun responseKeyEvent(sKey: SoftKey) {
         service.cancelVoiceInput()
@@ -773,7 +798,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         when (val keyCode = event.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_SPACE -> {
                 // 手写组合态下空格等同于选定当前候选，落定后不再把空格下发给应用
-                if (handwritingComposing != null) chooseAndUpdate()
+                if (hasHandwritingInput || handwritingComposing != null) chooseAndUpdate()
                 else if (DecodingInfo.isCandidatesEmpty || DecodingInfo.isAssociate) {
                     sendKeyEvent(keyCode)
                     resetToIdleState()
@@ -783,6 +808,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             KeyEvent.KEYCODE_CLEAR -> resetToIdleState()
             KeyEvent.KEYCODE_ENTER -> {
                 // 手写组合态下回车只作确认，composingStrForCommit 是拼音串，于手写无意义
+                if (hasHandwritingInput) {
+                    chooseAndUpdate()
+                    return
+                }
                 if (handwritingComposing == null) {
                     if (DecodingInfo.isCandidatesEmpty || DecodingInfo.isAssociate) sendKeyEvent(keyCode)
                     else commitDecInfoText(DecodingInfo.composingStrForCommit)
@@ -848,8 +877,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         return when {
             keyCode == KeyEvent.KEYCODE_DEL -> {
                 // 手写组合态下退格撤销尚未落定的字；deleteAction 删的是拼音串，于手写无意义
-                if (handwritingComposing != null) {
-                    cancelHandwritingComposing()
+                if (hasHandwritingInput || handwritingComposing != null) {
+                    cancelHandwritingInput()
                 } else if (DecodingInfo.isCandidatesEmpty || DecodingInfo.isAssociate) {
                     service.getTextBeforeCursor(1).takeIf { it.isNotEmpty() }?.let { textBeforeCursors.push(it) }
                     sendKeyEvent(keyCode)
@@ -892,9 +921,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun chooseAndUpdate(candId: Int = mSkbCandidatesBarView.getActiveCandNo()) {
-        // 手写组合态下选定候选即替换并落定，随后由联想词接管候选栏
-        if (handwritingComposing != null) {
-            chooseHandwritingCandidate(candId)
+        if (hasHandwritingInput) {
+            if (handwritingCandidates && KeyboardManager.instance.handwritingKeyboard?.chooseCandidate(candId) == true) {
+                if (!hasHandwritingInput && chinesePrediction && InputModeSwitcher.isChinese) updateAssociateCandidates()
+            }
             return
         }
         val candidate = DecodingInfo.getCandidate(candId)
@@ -945,11 +975,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 因而无须再为「候选已上屏」维护额外状态。
      */
     private fun setHandwritingComposing(text: String) {
-        // 常用语编辑用的是普通 EditText，没有组合态可言，只能直接写入
-        if (isAddPhrases) {
-            mAddPhrasesLayout.commitText(text)
-            return
-        }
+        if (isAddPhrases) return
         handwritingComposing = text
         handwritingReading = PolyphoneReading.of(text).takeIf(String::isNotEmpty)
         service.setComposingText(text)
@@ -958,6 +984,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     /** 落定尚未确定的手写文本。无组合态时为空操作 */
     fun finishHandwritingComposing() {
+        if (hasHandwritingInput) KeyboardManager.instance.handwritingKeyboard?.confirmReady()
         if (handwritingComposing == null) return
         handwritingComposing = null
         handwritingReading = null
@@ -976,43 +1003,17 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
     }
 
-    /**
-     * 选定手写候选：替换组合文本并当即落定，候选栏转由联想词接管。
-     *
-     * 不复用 finishHandwritingComposing，是因为那会先清空候选再由联想填回，候选栏会闪一下。
-     */
-    private fun chooseHandwritingCandidate(candId: Int) {
-        DecodingInfo.getCandidate(candId)?.text?.takeIf(String::isNotEmpty)
-            ?.let(::setHandwritingComposing)
+    /** 撤销手写组合文本及所有未返回请求，保留书写前的宿主文本。 */
+    fun cancelHandwritingInput() {
+        if (handwritingComposing != null) {
+            service.setComposingText("")
+            service.finishComposingText()
+        }
         handwritingComposing = null
         handwritingReading = null
-        service.finishComposingText()
-        updateComposingBubble()
-        // 本字到此结束，清掉笔迹，使紧接着书写的新字不带上残留笔划
-        (KeyboardManager.instance.currentContainer as? HandwritingContainer)?.resetHandwriting()
-        if (chinesePrediction && InputModeSwitcher.isChinese) updateAssociateCandidates()
-        else resetCandidateWindow()
-    }
-
-    /** 撤销尚未落定的手写文本，输入框恢复到书写之前 */
-    private fun cancelHandwritingComposing() {
-        if (handwritingComposing == null) return
-        handwritingComposing = null
-        handwritingReading = null
-        service.setComposingText("")
-        service.finishComposingText()
+        KeyboardManager.instance.handwritingKeyboard?.resetForNewChar()
         resetCandidateWindow()
         updateComposingBubble()
-    }
-
-    /**
-     * 手写开始写新字前确认上一个字。
-     *
-     * 停笔定时若尚未触发，上一个字还停留在候选里未进入组合态，此处补一次再落定。
-     */
-    fun confirmHandwritingBeforeNewChar() {
-        if (handwritingComposing == null) composeHandwritingFirstCandidate()
-        finishHandwritingComposing()
     }
 
     /**
@@ -1021,22 +1022,12 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 手写处于组合态时，文本已在输入框中，只需落定；其余情形沿用「先上屏首选再输入」。
      */
     private fun commitPendingCandidate() {
-        if (handwritingComposing != null) {
+        if (hasHandwritingInput || handwritingComposing != null) {
             finishHandwritingComposing()
             return
         }
         if (DecodingInfo.isAssociate || DecodingInfo.isCandidatesEmpty) return
         chooseAndUpdate()
-    }
-
-    /** 手写停笔后将首选置为组合文本，候选列表保留以供改选 */
-    fun composeHandwritingFirstCandidate() {
-        // 候选栏可能装着联想词而非本次识别结果：选定候选后即转入联想，且识别为跨进程
-        // 异步，停笔定时到点时结果未必已返回。此时取首选会把联想词误当作手写内容
-        if (DecodingInfo.isAssociate || DecodingInfo.isCandidatesEmpty) return
-        val first = DecodingInfo.getCandidate(0)?.text ?: return
-        if (first.isEmpty()) return
-        setHandwritingComposing(first)
     }
 
     fun updateCandidateBar() {
@@ -1046,6 +1037,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     private fun resetCandidateWindow() {
+        handwritingCandidates = false
+        mSkbCandidatesBarView.setHandwritingStatus(null)
         DecodingInfo.reset()
         (KeyboardManager.instance.currentContainer as? T9TextContainer)?.updateSymbolListView()
     }
@@ -1366,6 +1359,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             return
         }
         if (oldSelStart == newSelStart) return
+        if (hasHandwritingInput || handwritingComposing != null) return
         when {
             InputModeSwitcher.isNumberSkb -> {
                 val textBeforeCursor = service.getTextBeforeCursor(500)
@@ -1373,9 +1367,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 else CustomEngine.parseExpressionAtEnd(textBeforeCursor).let { CustomEngine.expressionCalculator(textBeforeCursor, it).let(::showSymbols) }
             }
             chinesePrediction && InputModeSwitcher.isChinese-> {
-                // 组合态是 setComposingText 自身引起的光标变动，此时候选栏正展示手写
-                // 识别结果，若照常查联想会把它整个覆盖掉
-                if (handwritingComposing != null) return
                 updateAssociateCandidates()
             }
             else -> resetCandidateWindow()

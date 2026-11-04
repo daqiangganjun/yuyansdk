@@ -22,11 +22,15 @@ internal object HandwritingProtocol {
     const val MSG_DOWNLOAD = 4
     const val MSG_DELETE = 5
     const val MSG_REFRESH = 6
+    const val MSG_CANCEL = 7
 
     /** 模型状态变更，arg1 为状态码，失败原因置于 [KEY_MESSAGE] */
     const val MSG_STATE = 10
     /** 识别结果，arg1 为对应的请求序号，候选文本置于 [KEY_TEXTS] */
     const val MSG_RESULT = 11
+    const val RESULT_OK = 0
+    const val RESULT_UNAVAILABLE = 1
+    const val RESULT_FAILED = 2
 
     const val KEY_X = "x"
     const val KEY_Y = "y"
@@ -40,6 +44,14 @@ internal object HandwritingProtocol {
     const val STATE_DOWNLOADING = 2
     const val STATE_DOWNLOADED = 3
     const val STATE_FAILED = 4
+}
+
+sealed interface HandwritingResult {
+    data class Candidates(val texts: List<String>) : HandwritingResult
+    data object Empty : HandwritingResult
+    data object Unavailable : HandwritingResult
+    data object Failed : HandwritingResult
+    data object TimedOut : HandwritingResult
 }
 
 /**
