@@ -9,15 +9,14 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
-import com.yuyan.imemodule.utils.KeyboardLoaderUtil
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import splitties.dimensions.dp
 import splitties.views.bottomPadding
 import splitties.views.rightPadding
-import kotlin.math.abs
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 /**
  * 软键盘View集装箱
@@ -27,6 +26,7 @@ import kotlin.math.absoluteValue
 open class BaseContainer(@JvmField var mContext: Context, @JvmField protected var inputView: InputView) : ConstraintLayout(mContext) {
     private lateinit var mRightPaddingKey: ManagedPreference.PInt
     private lateinit var mBottomPaddingKey: ManagedPreference.PInt
+    private var heightAdjustmentView: View? = null
 
     /**
      * 更新软键盘布局
@@ -47,17 +47,18 @@ open class BaseContainer(@JvmField var mContext: Context, @JvmField protected va
      */
     @SuppressLint("ClickableViewAccessibility")
     fun setKeyboardHeight() {
-        val rootView = LayoutInflater.from(context).inflate(R.layout.layout_ime_keyboard_height_shadow, this, false)
-        this.addView(rootView)
-        rootView.findViewById<View>(R.id.ll_keyboard_height_reset).setOnClickListener { _: View? ->
-            EnvironmentSingleton.instance.keyBoardHeightRatio = 0.3f
-            EnvironmentSingleton.instance.initData()
-            KeyboardLoaderUtil.instance.clearKeyboardMap()
-            KeyboardManager.instance.clearKeyboard()
-            updateSkbLayout()
+        heightAdjustmentView?.let { it.bringToFront(); return }
+        val adjustmentView = LayoutInflater.from(context).inflate(R.layout.layout_ime_keyboard_height_shadow, this, false)
+        heightAdjustmentView = adjustmentView
+        addView(adjustmentView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        adjustmentView.findViewById<View>(R.id.ll_keyboard_height_reset).setOnClickListener {
+            applyKeyboardHeight(0.3f)
         }
-        rootView.findViewById<View>(R.id.ll_keyboard_height_sure).setOnClickListener { removeView(rootView) }
-        rootView.findViewById<View>(R.id.iv_keyboard_height_Top).setOnTouchListener { v12: View, event -> onModifyKeyboardHeightEvent(v12, event) }
+        adjustmentView.findViewById<View>(R.id.ll_keyboard_height_sure).setOnClickListener {
+            removeView(adjustmentView)
+            heightAdjustmentView = null
+        }
+        adjustmentView.findViewById<View>(R.id.iv_keyboard_height_Top).setOnTouchListener { handle, event -> onModifyKeyboardHeightEvent(handle, event) }
         if(EnvironmentSingleton.instance.keyboardModeFloat){
             mBottomPaddingKey = if(EnvironmentSingleton.instance.isLandscape) AppPrefs.getInstance().internal.keyboardBottomPaddingLandscapeFloat
             else AppPrefs.getInstance().internal.keyboardBottomPaddingFloat
@@ -67,39 +68,45 @@ open class BaseContainer(@JvmField var mContext: Context, @JvmField protected va
             mBottomPaddingKey = AppPrefs.getInstance().internal.keyboardBottomPadding
             mRightPaddingKey = AppPrefs.getInstance().internal.keyboardRightPadding
         }
-        rootView.findViewById<View>(R.id.iv_keyboard_move).setOnTouchListener { _, event -> onMoveKeyboardEvent(event) }
+        adjustmentView.findViewById<View>(R.id.iv_keyboard_move).setOnTouchListener { _, event -> onMoveKeyboardEvent(event) }
     }
 
-    private val lastY = floatArrayOf(0f)
-    var isHandling = false
-    private fun onModifyKeyboardHeightEvent(v12: View, event: MotionEvent): Boolean {
+    private var resizeStartY = 0f
+    private var resizeStartRatio = 0f
+    private var resizeRatioPerPixel = 0f
+    private var resizing = false
+
+    private fun applyKeyboardHeight(ratio: Float) {
+        val env = EnvironmentSingleton.instance
+        val boundedRatio = ratio.coerceIn(0.15f, 0.75f)
+        if (boundedRatio == env.keyBoardHeightRatio) return
+        env.keyBoardHeightRatio = boundedRatio
+        env.initData()
+        KeyboardManager.instance.refreshKeyboardSize()
+        heightAdjustmentView?.bringToFront()
+    }
+
+    private fun onModifyKeyboardHeightEvent(handle: View, event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> lastY[0] = event.y
+            MotionEvent.ACTION_DOWN -> {
+                resizeStartY = event.rawY
+                resizeStartRatio = EnvironmentSingleton.instance.keyBoardHeightRatio
+                resizeRatioPerPixel = resizeStartRatio / EnvironmentSingleton.instance.skbHeight.coerceAtLeast(1)
+                resizing = false
+            }
             MotionEvent.ACTION_MOVE -> {
-                val y = event.y
-                if (!isHandling && abs((y - lastY[0]).toDouble()) > dp(10)) {
-                    isHandling = true
-                    var rat = EnvironmentSingleton.instance.keyBoardHeightRatio
-                    if (y < lastY[0]) { // 手指向上移动
-                        rat += 0.01f
-                    } else { // 向下移动
-                        rat -= 0.01f
-                    }
-                    lastY[0] = y
-                    EnvironmentSingleton.instance.keyBoardHeightRatio = rat
-                    EnvironmentSingleton.instance.initData()
-                    KeyboardLoaderUtil.instance.clearKeyboardMap()
-                    KeyboardManager.instance.clearKeyboard()
-                    updateSkbLayout()
-                    val l = LayoutParams(
-                        LayoutParams.MATCH_PARENT,
-                        EnvironmentSingleton.instance.skbHeight
-                    )
-                    rootView.setLayoutParams(l)
-                    isHandling = false
+                val distance = resizeStartY - event.rawY
+                if (resizing || distance.absoluteValue > dp(10)) {
+                    resizing = true
+                    val ratio = resizeStartRatio + distance * resizeRatioPerPixel
+                    applyKeyboardHeight((ratio * 100).roundToInt() / 100f)
                 }
             }
-            MotionEvent.ACTION_UP -> v12.performClick()
+            MotionEvent.ACTION_UP -> {
+                if (!resizing) handle.performClick()
+                resizing = false
+            }
+            MotionEvent.ACTION_CANCEL -> resizing = false
         }
         return true
     }

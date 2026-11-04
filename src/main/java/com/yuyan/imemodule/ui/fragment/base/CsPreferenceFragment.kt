@@ -13,6 +13,7 @@ import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.yuyan.imemodule.view.widget.applyNavBarInsetsBottomPadding
+import splitties.dimensions.dp
 
 abstract class CsPreferenceFragment : PreferenceFragmentCompat() {
 
@@ -22,6 +23,9 @@ abstract class CsPreferenceFragment : PreferenceFragmentCompat() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ) = super.onCreateView(inflater, container, savedInstanceState).apply {
+        listView.setPadding(requireContext().dp(12), 0, requireContext().dp(12), 0)
+        listView.addItemDecoration(PreferenceGroupDecoration(listView))
+        setDivider(null)
         listView.applyNavBarInsetsBottomPadding()
     }
 

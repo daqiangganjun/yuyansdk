@@ -120,7 +120,7 @@ class PopupKeyboardMenuUi(bounds: Rect, onDismissSelf: PopupContainerUi.() -> Un
     private fun markFocus(index: Int) {
         keyUis.getOrNull(index)?.apply {
             root.background =  if(popupMenuPair.first == PopupMenuMode.Clear)focusBackgroundClear else focusBackground
-            textView.setTextColor(ThemeManager.activeTheme.keyTextColor)
+            textView.setTextColor(if (popupMenuPair.first == PopupMenuMode.Clear) android.graphics.Color.WHITE else ThemeManager.activeTheme.accentKeyTextColor)
         }
     }
 

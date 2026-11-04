@@ -113,7 +113,7 @@ class EnvironmentSingleton private constructor() {
          */
         set(keyBoardHeightRatio) {
             keyboardHeightRatio = keyBoardHeightRatio
-            if(isLandscape) AppPrefs.getInstance().internal.keyboardHeightRatioLandscape.setValue(keyBoardHeightRatio)
+            if(isLandscape && !keyboardModeFloat) AppPrefs.getInstance().internal.keyboardHeightRatioLandscape.setValue(keyBoardHeightRatio)
             else AppPrefs.getInstance().internal.keyboardHeightRatio.setValue(keyBoardHeightRatio)
         }
 

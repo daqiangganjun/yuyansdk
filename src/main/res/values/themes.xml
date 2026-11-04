@@ -1,6 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="Theme.AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/settings_primary</item>
+        <item name="colorOnPrimary">@color/settings_on_primary</item>
+        <item name="colorPrimaryContainer">@color/settings_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/settings_on_primary_container</item>
+        <item name="colorSecondary">@color/settings_primary</item>
+        <item name="colorOnSecondary">@color/settings_on_primary</item>
+        <item name="colorSecondaryContainer">@color/settings_primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/settings_on_primary_container</item>
+        <item name="colorSurface">@color/settings_surface</item>
+        <item name="colorOnBackground">@color/settings_text</item>
+        <item name="colorSurfaceContainerLowest">@color/settings_background</item>
+        <item name="colorSurfaceContainerLow">@color/settings_surface</item>
+        <item name="colorSurfaceContainer">@color/settings_surface</item>
+        <item name="colorSurfaceContainerHigh">@color/settings_surface</item>
+        <item name="colorSurfaceContainerHighest">@color/settings_surface_variant</item>
+        <item name="colorOnSurface">@color/settings_text</item>
+        <item name="colorSurfaceVariant">@color/settings_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/settings_secondary_text</item>
+        <item name="colorOutline">@color/settings_outline</item>
+        <item name="colorOutlineVariant">@color/settings_outline</item>
+        <item name="colorControlNormal">@color/settings_secondary_text</item>
+        <item name="android:colorBackground">@color/settings_background</item>
+        <item name="android:windowBackground">@color/settings_background</item>
+        <item name="android:textColorPrimary">@color/settings_text_primary</item>
+        <item name="android:textColorSecondary">@color/settings_text_secondary</item>
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Modern</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.Yuyan.Dialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Yuyan.Dialog</item>
     </style>
     <style name="Theme.CropActivityTheme" parent="Theme.AppCompat.DayNight">
         <item name="android:statusBarColor">?android:attr/colorPrimary</item>

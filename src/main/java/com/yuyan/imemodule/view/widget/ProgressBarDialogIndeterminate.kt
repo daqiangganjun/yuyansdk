@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.utils.getGlobalSettings
@@ -27,7 +28,7 @@ import splitties.views.textAppearance
 @Suppress("FunctionName")
 fun Context.ProgressBarDialogIndeterminate(@StringRes title: Int): AlertDialog.Builder {
     val androidStyles = AndroidStyles(this)
-    return AlertDialog.Builder(this)
+    return MaterialAlertDialogBuilder(this)
         .setTitle(title)
         .setView(verticalLayout {
             val shouldAnimate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

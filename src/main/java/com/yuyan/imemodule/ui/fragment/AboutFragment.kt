@@ -7,7 +7,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import androidx.preference.PreferenceFragmentCompat
+import com.yuyan.imemodule.ui.fragment.base.CsPreferenceFragment
 import com.yuyan.imemodule.BuildConfig
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.CustomConstant
@@ -26,7 +26,7 @@ import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class AboutFragment : PreferenceFragmentCompat() {
+class AboutFragment : CsPreferenceFragment() {
     private var exportTimestamp = System.currentTimeMillis()
     private lateinit var exportLauncher: ActivityResultLauncher<String>
 

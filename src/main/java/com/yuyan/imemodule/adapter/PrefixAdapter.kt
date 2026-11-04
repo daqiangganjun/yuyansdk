@@ -42,6 +42,7 @@ class PrefixAdapter(context: Context?, private val mDatas: Array<String>, privat
         var tvSymbolType: AutoScaleTextView = view.findViewById(android.R.id.text1)
         init {
             tvSymbolType.scaleMode = AutoScaleTextView.Mode.Proportional
+            tvSymbolType.centerGlyphBounds = true
             tvSymbolType.setTextColor(textColor)
         }
     }

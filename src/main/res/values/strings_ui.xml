@@ -1,0 +1,12 @@
+<resources>
+    <string name="key_background_mask_strength">按键背景蒙版强度</string>
+    <string name="key_background_mask_hint">0% 完全透明，100% 完全不透明；不改变文字和背景图片的明暗。</string>
+    <string name="theme_percentage">%1$d%%</string>
+    <string name="voice_panel_waiting">连接成功后即可说话</string>
+    <string name="voice_panel_connecting">正在连接%1$s</string>
+    <string name="voice_panel_listening">正在聆听</string>
+    <string name="voice_panel_ready">请说话…</string>
+    <string name="voice_panel_recognizing">正在识别</string>
+    <string name="voice_panel_release_hint">松开空格结束</string>
+    <string name="voice_panel_commit_hint">识别完成后自动输入</string>
+</resources>

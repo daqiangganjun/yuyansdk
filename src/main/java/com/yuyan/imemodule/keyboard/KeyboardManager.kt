@@ -14,6 +14,7 @@ import com.yuyan.imemodule.keyboard.container.SettingsContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
 import com.yuyan.imemodule.prefs.AppPrefs
+import com.yuyan.imemodule.utils.KeyboardLoaderUtil
 
 /**
  * 键盘显示管理类
@@ -46,6 +47,24 @@ class KeyboardManager {
         mKeyboardRootView?.clearViews()
         currentContainer = null
         mInputView?.let { it.initView(it.context) }
+    }
+
+    fun refreshKeyboardSize() {
+        val current = currentContainer ?: return
+        KeyboardLoaderUtil.instance.clearKeyboardMap()
+        val iterator = keyboards.entries.iterator()
+        while (iterator.hasNext()) {
+            val container = iterator.next().value
+            if (container !== current) {
+                mKeyboardRootView?.removeView(container)
+                iterator.remove()
+            }
+        }
+        // 拖动中的容器必须留在原父视图上，否则手势和高度调节遮罩会一起失效。
+        current.updateSkbLayout()
+        (current as? InputBaseContainer)?.updateStates()
+        current.requestLayout()
+        mInputView?.updateKeyboardSize()
     }
 
     /**

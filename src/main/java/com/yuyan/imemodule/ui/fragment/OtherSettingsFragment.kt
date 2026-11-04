@@ -10,7 +10,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.preference.PreferenceScreen
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.Launcher
@@ -108,7 +108,7 @@ class OtherSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().ot
             }
         }
         screen.addPreference(R.string.import_user_data) {
-            AlertDialog.Builder(ctx)
+            MaterialAlertDialogBuilder(ctx)
                 .setIconAttribute(android.R.attr.alertDialogIcon)
                 .setTitle(R.string.import_user_data)
                 .setMessage(R.string.confirm_import_user_data)

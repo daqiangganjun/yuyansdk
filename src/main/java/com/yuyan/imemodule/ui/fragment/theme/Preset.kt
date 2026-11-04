@@ -4,6 +4,7 @@ package com.yuyan.imemodule.ui.fragment.theme
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.yuyan.imemodule.R
 import kotlinx.coroutines.cancelAndJoin
@@ -21,7 +22,7 @@ import splitties.views.dsl.core.verticalMargin
 @Suppress("FunctionName")
 fun Context.ProgressBarDialogIndeterminate(@StringRes title: Int): AlertDialog.Builder {
     val androidStyles = AndroidStyles(this)
-    return AlertDialog.Builder(this)
+    return MaterialAlertDialogBuilder(this)
         .setTitle(title)
         .setView(verticalLayout {
             add(androidStyles.progressBar.horizontal {

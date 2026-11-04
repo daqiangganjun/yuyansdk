@@ -64,7 +64,7 @@ open class SettingsActivity : AppCompatActivity() {
             binding.toolbar.title = it
         }
         viewModel.toolbarShadow.observe(this) {
-            binding.toolbar.elevation = dp(if (it) 4f else 0f)
+            binding.toolbar.elevation = dp(if (it) 1f else 0f)
         }
         navController.addOnDestinationChangedListener { _, dest, _ ->
             when (dest.id) {

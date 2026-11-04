@@ -8,7 +8,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDialogFragmentCompat
-import androidx.preference.SwitchPreference
+import androidx.preference.TwoStatePreference
 import splitties.dimensions.dp
 import splitties.views.dsl.core.verticalMargin
 
@@ -39,7 +39,7 @@ fun <T : ListPreference> T.restore() {
     }
 }
 
-fun <T : SwitchPreference> T.restore() {
+fun <T : TwoStatePreference> T.restore() {
     (def() as? Boolean)?.let {
         if (callChangeListener(it)) {
             isChecked = it

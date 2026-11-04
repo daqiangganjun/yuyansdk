@@ -34,6 +34,16 @@ class AutoScaleTextView @JvmOverloads constructor(context: Context?, attributeSe
 
     var scaleMode = Mode.None
 
+    var centerGlyphBounds = false
+        set(value) {
+            if (field == value) return
+            field = value
+            needsMeasureText = true
+            needsCalculateTransform = true
+            requestLayout()
+            invalidate()
+        }
+
     private lateinit var text: String
 
     private var needsMeasureText = true
@@ -87,7 +97,7 @@ class AutoScaleTextView @JvmOverloads constructor(context: Context?, attributeSe
             val paint = paint
             paint.getFontMetrics(fontMetrics)
             val codePointCount = Character.codePointCount(text, 0, text.length)
-            if (codePointCount == 1) {
+            if (codePointCount == 1 || centerGlyphBounds) {
                 // use actual text bounds when there is only one "character",
                 // eg. full-width punctuation
                 paint.getTextBounds(text, 0, text.length, textBounds)
@@ -112,6 +122,10 @@ class AutoScaleTextView @JvmOverloads constructor(context: Context?, attributeSe
     }
 
     private fun calculateTransform(viewWidth: Int, viewHeight: Int) {
+        if (centerGlyphBounds) {
+            calculateGlyphTransform(viewWidth, viewHeight)
+            return
+        }
         val contentWidth = viewWidth - paddingLeft - paddingRight
         val contentHeight = viewHeight - paddingTop - paddingBottom
         measureTextBounds()
@@ -151,6 +165,22 @@ class AutoScaleTextView @JvmOverloads constructor(context: Context?, attributeSe
         translateY = (contentHeight.toFloat() - fontHeight) / 2.0f - fontOffsetY + paddingTop
     }
 
+    private fun calculateGlyphTransform(viewWidth: Int, viewHeight: Int) {
+        val contentWidth = (viewWidth - paddingLeft - paddingRight).coerceAtLeast(0)
+        val contentHeight = (viewHeight - paddingTop - paddingBottom).coerceAtLeast(0)
+        val bounds = measureTextBounds()
+        val widthScale = if (bounds.width() > 0) contentWidth.toFloat() / bounds.width() else 1f
+        val heightScale = if (bounds.height() > 0) contentHeight.toFloat() / bounds.height() else 1f
+        textScaleX = when (scaleMode) {
+            Mode.None -> 1f
+            Mode.Horizontal -> min(1f, widthScale)
+            Mode.Proportional -> min(1f, min(widthScale, heightScale))
+        }
+        textScaleY = if (scaleMode == Mode.Proportional) textScaleX else 1f
+        translateX = paddingLeft + (contentWidth - bounds.width() * textScaleX) / 2f - bounds.left * textScaleX
+        translateY = paddingTop + (contentHeight - bounds.height() * textScaleY) / 2f - bounds.top * textScaleY
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (needsCalculateTransform) {
             calculateTransform(width, height)
@@ -159,6 +189,12 @@ class AutoScaleTextView @JvmOverloads constructor(context: Context?, attributeSe
         val paint = paint
         paint.color = currentTextColor
         canvas.withSave {
+            if (centerGlyphBounds) {
+                translate(scrollX + translateX, scrollY + translateY)
+                scale(textScaleX, textScaleY)
+                drawText(text, 0f, 0f, paint)
+                return@withSave
+            }
             translate(scrollX.toFloat(), scrollY.toFloat())
             scale(textScaleX, textScaleY, 0f, translateY)
             translate(translateX, translateY)

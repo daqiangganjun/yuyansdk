@@ -1,7 +1,8 @@
 package com.yuyan.imemodule.ui.fragment
 
 import android.Manifest
-import android.app.AlertDialog
+import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -191,7 +192,7 @@ class VoiceSettingsFragment : CsPreferenceFragment() {
         holder.findViewById(R.id.speech_option_help)?.apply {
             contentDescription = "${option.title}：查看说明"
             setOnClickListener {
-                AlertDialog.Builder(context).setTitle(option.title).setMessage(option.details)
+                MaterialAlertDialogBuilder(context).setTitle(option.title).setMessage(option.details)
                     .setPositiveButton("知道了", null).show()
             }
         }
@@ -207,7 +208,7 @@ class VoiceSettingsFragment : CsPreferenceFragment() {
             hint = "请输入密钥，留空不修改"
             if (Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
-        val dialog = AlertDialog.Builder(ctx).setTitle("${provider.displayName} API Key")
+        val dialog = MaterialAlertDialogBuilder(ctx).setTitle("${provider.displayName} API Key")
             .setMessage("密钥仅保存在本机，使用 Android Keystore 加密，不参与备份。")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
@@ -247,7 +248,7 @@ class VoiceSettingsFragment : CsPreferenceFragment() {
                 val details = if (result.success) {
                     "${result.message}\n耗时：${result.elapsedMs} 毫秒\n\n测试语音识别结果：\n${result.recognizedText}"
                 } else result.message
-                checkDialog = AlertDialog.Builder(requireContext())
+                checkDialog = MaterialAlertDialogBuilder(requireContext())
                     .setTitle(if (result.success) "检查成功" else "检查未通过")
                     .setMessage(details).setPositiveButton("知道了", null).show()
             } finally {

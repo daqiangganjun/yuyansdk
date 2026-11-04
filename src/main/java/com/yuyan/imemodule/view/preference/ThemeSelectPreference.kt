@@ -2,7 +2,7 @@
 package com.yuyan.imemodule.view.preference
 
 import android.content.Context
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.preference.Preference
 import com.yuyan.imemodule.data.theme.Theme
 import com.yuyan.imemodule.data.theme.ThemeManager
@@ -29,7 +29,7 @@ class ThemeSelectPreference(context: Context, private val defaultTheme: Theme) :
             selected = allThemes.indexOfFirst { it.name == currentThemeName }
         }
         view.adapter = adapter
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle(title)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 adapter.selectedTheme?.let {

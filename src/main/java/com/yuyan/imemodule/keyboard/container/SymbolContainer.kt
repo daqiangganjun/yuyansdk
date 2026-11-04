@@ -2,7 +2,10 @@ package com.yuyan.imemodule.keyboard.container
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -13,6 +16,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.setPadding
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
@@ -30,6 +34,7 @@ import com.yuyan.imemodule.prefs.behavior.SymbolMode
 import com.yuyan.imemodule.utils.DevicesUtils
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.KeyboardManager
+import com.yuyan.imemodule.view.KeyboardUiStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -60,11 +65,17 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
     private val ivDelete: ImageView
     var isLockSymbol = false
     private var mHandler: Handler? = null
+    private var tabMediator: TabLayoutMediator? = null
 
     companion object {
         private const val MSG_REPEAT = 3
         private const val REPEAT_INTERVAL = 50L // ~20 keys per second
         private const val REPEAT_START_DELAY = 400L
+    }
+
+    override fun onDetachedFromWindow() {
+        mHandler?.removeCallbacksAndMessages(null)
+        super.onDetachedFromWindow()
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -86,24 +97,13 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
     }
 
     init {
-        val pressKeyBackground = GradientDrawable()
-        if (ThemeManager.prefs.keyBorder.getValue()) {
-            val keyRadius = ThemeManager.prefs.keyRadius.getValue()
-            pressKeyBackground.setColor(activeTheme.keyPressHighlightColor)
-            pressKeyBackground.setShape(GradientDrawable.RECTANGLE)
-            pressKeyBackground.setCornerRadius(keyRadius.toFloat()) // 设置圆角半径
-        }
         val mLLSymbolType = LayoutInflater.from(getContext()).inflate(R.layout.sdk_view_symbols_emoji_type, this, false) as LinearLayout
-        tabLayout = mLLSymbolType.findViewById<TabLayout?>(R.id.tab_symbols_emoji_type).apply {
-            addOnTabSelectedListener(object :TabLayout.OnTabSelectedListener{
-                override fun onTabSelected(tab: TabLayout.Tab?) {
-                    tab?.view?.background = pressKeyBackground
-                }
-                override fun onTabUnselected(tab: TabLayout.Tab?) {
-                    tab?.view?.background = null
-                }
-                override fun onTabReselected(tab: TabLayout.Tab?) {}
-            })
+        tabLayout = mLLSymbolType.findViewById<TabLayout>(R.id.tab_symbols_emoji_type).apply {
+            background = KeyboardUiStyle.rounded(activeTheme.keyBackgroundColor, dp(8f))
+            clipToOutline = true
+            elevation = 0f
+            setSelectedTabIndicator(ColorDrawable(Color.TRANSPARENT))
+            tabRippleColor = ColorStateList.valueOf(activeTheme.keyPressHighlightColor)
         }
         mVPSymbolsView = ViewPager2(context)
         mLLSymbolType.visibility = VISIBLE
@@ -113,30 +113,29 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
         ivDelete.drawable.setTint(activeTheme.keyTextColor)
         val isKeyBorder = ThemeManager.prefs.keyBorder.getValue()
         if (isKeyBorder) {
-            val keyRadius = ThemeManager.prefs.keyRadius.getValue()
-            val bg = GradientDrawable()
-            bg.setColor(activeTheme.keyBackgroundColor)
-            bg.shape = GradientDrawable.RECTANGLE
-            bg.cornerRadius = keyRadius.toFloat() // 设置圆角半径
-            ivDelete.background = bg
-            ivReturn.background = bg
+            ivDelete.background = KeyboardUiStyle.buttonBackground(activeTheme, dp(8f))
+            ivReturn.background = KeyboardUiStyle.buttonBackground(activeTheme, dp(8f))
         }
-        ivReturn.setOnTouchListener { _, motionEvent ->
+        ivReturn.setOnTouchListener { view, motionEvent ->
             when (motionEvent.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    view.isPressed = true
                     // 播放按键声音和震动
                     DevicesUtils.tryPlayKeyDown(KeyEvent.KEYCODE_DEL)
                     DevicesUtils.tryVibrate(this)
                 }
                 MotionEvent.ACTION_UP -> {
+                    view.isPressed = false
                     KeyboardManager.instance.switchKeyboard()
                 }
+                MotionEvent.ACTION_CANCEL -> view.isPressed = false
             }
             true
         }
-        ivDelete.setOnTouchListener { _, motionEvent ->
+        ivDelete.setOnTouchListener { view, motionEvent ->
             when (motionEvent.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    view.isPressed = true
                     // 播放按键声音和震动
                     DevicesUtils.tryPlayKeyDown(KeyEvent.KEYCODE_DEL)
                     DevicesUtils.tryVibrate(this)
@@ -145,6 +144,7 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    view.isPressed = false
                     if(!isLockSymbol){
                         isLockSymbol = true
                         ivDelete.setImageResource(R.drawable.sdk_skb_key_delete_icon)
@@ -154,15 +154,34 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
                         mHandler?.removeMessages(MSG_REPEAT)
                     }
                 }
+                MotionEvent.ACTION_CANCEL -> {
+                    view.isPressed = false
+                    mHandler?.removeMessages(MSG_REPEAT)
+                }
             }
             true
         }
         add(mLLSymbolType, lParams(matchParent, wrapContent){
             bottomOfParent(0)
         })
-        add(mVPSymbolsView, lParams(matchParent, matchParent){
+        add(mVPSymbolsView, lParams(matchParent, 0){
+            topToTop = LayoutParams.PARENT_ID
             bottomToTop = mLLSymbolType.id
         })
+    }
+
+    private fun bindCategoryTabs(data: List<Int>) {
+        tabMediator = TabLayoutMediator(tabLayout, mVPSymbolsView) { tab, position ->
+            tab.view.background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_selected), KeyboardUiStyle.rounded(
+                    ColorUtils.compositeColors(activeTheme.keyPressHighlightColor, activeTheme.keyBackgroundColor), dp(8f)))
+                addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+            }
+            tab.setCustomView(ImageView(context).apply {
+                setImageDrawable(ContextCompat.getDrawable(context, data[position])?.mutate()?.apply { setTint(activeTheme.keyTextColor) })
+            })
+            tab.view.setPadding(dp(5))
+        }.also { it.attach() }
     }
 
     private fun onItemClickOperate(value: String) {
@@ -201,6 +220,7 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
      * 切换显示界面
      */
     fun setSymbolsView() {
+        tabMediator?.detach()
         mShowType = SymbolMode.Symbol
         isLockSymbol = false   // 符号键默认未锁定，表情键盘默认锁定
         ivDelete.setImageResource(R.drawable.icon_symbol_lock)
@@ -210,15 +230,7 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
             onItemClickOperate(symbol)
         }
         val data = mSymbolsEmoji.keys.toList()
-        TabLayoutMediator(tabLayout, mVPSymbolsView) { tab, position ->
-            tab.view.background = null
-            tab.setCustomView(ImageView(context).apply {
-                setImageDrawable(ContextCompat.getDrawable(context,data[position]).apply {
-                    this?.setTint(activeTheme.keyTextColor)
-                })
-            })
-            tab.view.setPadding(dp(5))
-        }.attach()
+        bindCategoryTabs(data)
         mVPSymbolsView.currentItem = 0
     }
 
@@ -226,6 +238,7 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
      * 切换显示界面
      */
     fun setEmojisView(showType: SymbolMode) {
+        tabMediator?.detach()
         mShowType = showType
         isLockSymbol = true   // 符号键默认未锁定，表情键盘默认锁定
         ivDelete.setImageResource(R.drawable.sdk_skb_key_delete_icon)
@@ -245,15 +258,7 @@ class SymbolContainer(context: Context, inputView: InputView) : BaseContainer(co
             onItemClickOperate(symbol)
         }
         val data = mSymbolsEmoji.keys.toList()
-        TabLayoutMediator(tabLayout, mVPSymbolsView) { tab, position ->
-            tab.view.background = null
-            tab.setCustomView(ImageView(context).apply {
-                setImageDrawable(ContextCompat.getDrawable(context,data[position]).apply {
-                    this?.setTint(activeTheme.keyTextColor)
-                })
-            })
-            tab.view.setPadding(dp(5))
-        }.attach()
+        bindCategoryTabs(data)
     }
 
     fun getMenuMode(): SymbolMode {

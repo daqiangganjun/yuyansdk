@@ -1,0 +1,12 @@
+<resources>
+    <color name="settings_primary">#365E70</color>
+    <color name="settings_on_primary">#FFFFFF</color>
+    <color name="settings_primary_container">#CEE6F0</color>
+    <color name="settings_on_primary_container">#163946</color>
+    <color name="settings_background">#F2F5F7</color>
+    <color name="settings_surface">#FFFFFF</color>
+    <color name="settings_surface_variant">#E5EBEF</color>
+    <color name="settings_text">#202B33</color>
+    <color name="settings_secondary_text">#52616C</color>
+    <color name="settings_outline">#BBC6CE</color>
+</resources>

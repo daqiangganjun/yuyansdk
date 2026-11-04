@@ -187,8 +187,8 @@ class PopupKeyboardUi(bounds: Rect, onDismissSelf: PopupContainerUi.() -> Unit =
     private fun markFocus(index: Int) {
         keyUis.getOrNull(index)?.apply {
             root.background = focusBackground
-            textView.setTextColor(theme.keyTextColor)
-            textViewSdb.setTextColor(theme.keyTextColor)
+            textView.setTextColor(theme.accentKeyTextColor)
+            textViewSdb.setTextColor(theme.accentKeyTextColor)
         }
     }
 

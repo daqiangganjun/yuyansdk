@@ -4,172 +4,122 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider
 import com.yuyan.imemodule.R
+import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.utils.DevicesUtils
-import com.yuyan.imemodule.utils.DevicesUtils.sp2px
-import com.yuyan.imemodule.keyboard.KeyboardManager
-import com.yuyan.imemodule.view.widget.seekbar.SignSeekBar
+import com.yuyan.imemodule.view.KeyboardUiStyle
+import com.yuyan.imemodule.view.preference.ManagedPreference
 import splitties.dimensions.dp
-import splitties.views.dsl.appcompat.switch
-import splitties.views.dsl.constraintlayout.above
-import splitties.views.dsl.constraintlayout.before
-import splitties.views.dsl.constraintlayout.below
-import splitties.views.dsl.constraintlayout.constraintLayout
-import splitties.views.dsl.constraintlayout.endOfParent
-import splitties.views.dsl.constraintlayout.lParams
-import splitties.views.dsl.constraintlayout.matchConstraints
-import splitties.views.dsl.constraintlayout.startOfParent
-import splitties.views.dsl.constraintlayout.topOfParent
-import splitties.views.dsl.constraintlayout.topToTopOf
-import splitties.views.dsl.core.add
-import splitties.views.dsl.core.matchParent
-import splitties.views.dsl.core.textView
-import splitties.views.dsl.core.wrapContent
-import splitties.views.gravityVerticalCenter
+import kotlin.math.roundToInt
 
-
-class KeyboardFeedbacksFragment : Fragment(){
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View = with(requireContext()) {
-
-        val soundOnKeyPress by AppPrefs.getInstance().internal.soundOnKeyPress
-        val vibrationAmplitude by AppPrefs.getInstance().internal.vibrationAmplitude
-
-        val soundSeekBar =  SignSeekBar(context)
-        soundSeekBar.getConfigBuilder()
-            .min(0f).max(40f).progress(soundOnKeyPress.toFloat()).sectionCount(4)
-            .secondTrackColor(getColor(android.R.color.holo_green_light))
-            .showThumbShadow(true)
-            .bottomSidesLabels(resources.getStringArray(R.array.sound_labels))
-            .thumbBgAlpha(0.3f)
-            .thumbRadius(dp(2))
-            .thumbRadiusOnDragging(dp(2))
-            .thumbRatio(0.7f)
-            .touchToSeek()
-            .sectionTextSize(sp2px(5))
-            .sectionTextPosition(SignSeekBar.TextPosition.BELOW_SECTION_MARK)
-            .trackColor(getColor(R.color.color_gray))
-            .trackSize(dp(2))
-            .build()
-
-        val soundSwitch= switch {
-            isChecked = soundOnKeyPress < 5 || soundOnKeyPress > 10
-            soundSeekBar.isEnabled = soundOnKeyPress < 5 || soundOnKeyPress > 10
-            setOnCheckedChangeListener { _, isChecked ->
-                if(isChecked){
-                    soundSeekBar.setProgress(0f)
-                    AppPrefs.getInstance().internal.soundOnKeyPress.setValue(0)
-                    soundSeekBar.isEnabled = true
-                } else {
-                    soundSeekBar.setProgress(10f)
-                    AppPrefs.getInstance().internal.soundOnKeyPress.setValue(10)
-                    soundSeekBar.isEnabled = false
+class KeyboardFeedbacksFragment : Fragment() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(16), dp(12), dp(16))
+        }
+        val prefs = AppPrefs.getInstance().internal
+        content.addView(feedbackCard(R.string.button_sound_volume, prefs.soundOnKeyPress, 40, 10,
+            { it < 5 || it > 10 }, { value ->
+                when {
+                    value < 5 -> "跟随系统"
+                    value <= 10 -> "已关闭"
+                    else -> "音量 ${((value - 10) * 100f / 30).roundToInt()}%"
                 }
+            }) { DevicesUtils.tryPlayKeyDown() })
+        val vibrationLabels = resources.getStringArray(R.array.vibrate_labels)
+        content.addView(feedbackCard(R.string.button_vibration_amplitude, prefs.vibrationAmplitude, 4, 1,
+            { it != 1 }, { vibrationLabels[it.coerceIn(vibrationLabels.indices)] }) { DevicesUtils.tryVibrate(it) })
+        return NestedScrollView(context).apply {
+            clipToPadding = false
+            addView(content)
+            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+                view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom)
+                insets
             }
         }
+    }
 
-        soundSeekBar.setOnProgressChangedListener(object : SignSeekBar.OnProgressChangedListener {
-            override fun onProgressChanged(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float, fromUser: Boolean) {}
-            override fun getProgressOnFinally(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float, fromUser: Boolean) {}
-            override fun getProgressOnActionUp(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float) {
-                AppPrefs.getInstance().internal.soundOnKeyPress.setValue(progress)
-                DevicesUtils.tryPlayKeyDown()
+    private fun feedbackCard(
+        title: Int,
+        preference: ManagedPreference.PInt,
+        maximum: Int,
+        disabledValue: Int,
+        enabled: (Int) -> Boolean,
+        label: (Int) -> String,
+        preview: (View) -> Unit,
+    ): View {
+        val context = requireContext()
+        val initial = preference.getValue().coerceIn(0, maximum)
+        val toggle = MaterialSwitch(context).apply {
+            setText(title)
+            textSize = 16f
+            minHeight = dp(48)
+            isChecked = enabled(initial)
+        }
+        val valueLabel = TextView(context).apply {
+            textSize = 14f
+            text = label(initial)
+            setTextColor(ContextCompat.getColor(context, R.color.settings_secondary_text))
+        }
+        val slider = Slider(context).apply {
+            valueFrom = 0f
+            valueTo = maximum.toFloat()
+            stepSize = 1f
+            value = initial.toFloat()
+            isEnabled = enabled(initial)
+            contentDescription = getString(title)
+            setLabelFormatter { label(it.roundToInt()) }
+        }
+        var updating = false
+        var trackingTouch = false
+        fun save(value: Int) {
+            preference.setValue(value)
+            updating = true
+            toggle.isChecked = enabled(value)
+            slider.isEnabled = enabled(value)
+            updating = false
+            if (enabled(value)) preview(slider)
+        }
+        toggle.setOnCheckedChangeListener { _, checked ->
+            if (!updating) {
+                val value = if (checked) 0 else disabledValue
+                slider.value = value.toFloat()
+                slider.isEnabled = checked
+                preference.setValue(value)
+            }
+        }
+        slider.addOnChangeListener { view, value, fromUser ->
+            valueLabel.text = label(value.roundToInt())
+            if (fromUser && !trackingTouch) save(value.roundToInt())
+        }
+        slider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) { trackingTouch = true }
+            override fun onStopTrackingTouch(slider: Slider) {
+                trackingTouch = false
+                save(slider.value.roundToInt())
             }
         })
-
-       val vibrateSeekBar =  SignSeekBar(context)
-        vibrateSeekBar.getConfigBuilder()
-            .min(0f).max(4f).progress(vibrationAmplitude.toFloat()).sectionCount(4)
-            .secondTrackColor(getColor(android.R.color.holo_green_light))
-            .showThumbShadow(true)
-            .bottomSidesLabels(resources.getStringArray(R.array.vibrate_labels))
-            .thumbBgAlpha(0.3f)
-            .thumbRadius(dp(4))
-            .thumbRadiusOnDragging(dp(10))
-            .thumbRatio(0.7f)
-            .touchToSeek()
-            .sectionTextSize(sp2px(5))
-            .autoAdjustSectionMark()
-            .sectionTextPosition(SignSeekBar.TextPosition.BELOW_SECTION_MARK)
-            .trackColor(getColor(R.color.color_gray))
-            .trackSize(dp(4))
-            .build()
-
-        val vibrationSwitch = switch {
-            isChecked = vibrationAmplitude != 1
-            vibrateSeekBar.isEnabled = vibrationAmplitude != 1
-            setOnCheckedChangeListener { _, isChecked ->
-                if(isChecked){
-                    vibrateSeekBar.setProgress(0f)
-                    AppPrefs.getInstance().internal.vibrationAmplitude.setValue(0)
-                    vibrateSeekBar.isEnabled = true
-                } else {
-                    vibrateSeekBar.setProgress(1f)
-                    AppPrefs.getInstance().internal.vibrationAmplitude.setValue(1)
-                    vibrateSeekBar.isEnabled = false
-                }
-            }
-        }
-
-        vibrateSeekBar.setOnProgressChangedListener(object : SignSeekBar.OnProgressChangedListener {
-            override fun onProgressChanged(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float, fromUser: Boolean) { }
-            override fun getProgressOnActionUp(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float) {}
-
-            override fun getProgressOnFinally(signSeekBar: SignSeekBar, progress: Int, progressFloat: Float, fromUser: Boolean) {
-                AppPrefs.getInstance().internal.vibrationAmplitude.setValue(progress)
-                DevicesUtils.tryVibrate(signSeekBar)
-            }
-        })
-
-        val soundTitle = textView {
-            setText(R.string.button_sound_volume)
-            textSize = 16f
-            gravity = gravityVerticalCenter
-        }
-
-        val vibrationTitle = textView {
-            setText(R.string.button_vibration_amplitude)
-            textSize = 16f
-            gravity = gravityVerticalCenter
-        }
-
-        constraintLayout {
-            val lineHeight = dp(48)
-            val itemMargin = dp(30)
-            add(soundTitle, lParams(matchConstraints, lineHeight) {
-                topOfParent()
-                startOfParent(itemMargin)
-                before(soundSwitch)
-                above(soundSeekBar)
-            })
-            add(soundSwitch, lParams(matchConstraints, lineHeight) {
-                topToTopOf(soundTitle)
-                endOfParent(itemMargin)
-            })
-            add(soundSeekBar, lParams(width = matchParent, height = wrapContent) {
-                below(soundTitle)
-                startOfParent(itemMargin)
-                endOfParent(itemMargin)
-                above(vibrationTitle)
-            })
-
-            add(vibrationTitle, lParams(matchConstraints, lineHeight) {
-                below(soundSeekBar)
-                startOfParent(itemMargin)
-                topToTopOf(soundSeekBar, itemMargin)
-                above(vibrateSeekBar)
-            })
-            add(vibrationSwitch, lParams(matchConstraints, lineHeight) {
-                topToTopOf(vibrationTitle)
-                endOfParent(itemMargin)
-            })
-            add(vibrateSeekBar, lParams(width = matchParent, height = wrapContent) {
-                below(vibrationTitle)
-                startOfParent(itemMargin)
-                endOfParent(itemMargin)
-            })
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(12))
+            background = KeyboardUiStyle.rounded(ContextCompat.getColor(context, R.color.settings_surface), dp(16f))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) }
+            addView(toggle, LinearLayout.LayoutParams(-1, -2))
+            addView(valueLabel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            addView(slider, LinearLayout.LayoutParams(-1, -2))
         }
     }
 

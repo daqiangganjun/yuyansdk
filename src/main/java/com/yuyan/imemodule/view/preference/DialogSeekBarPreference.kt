@@ -4,7 +4,9 @@ package com.yuyan.imemodule.view.preference
 import android.content.Context
 import android.content.res.TypedArray
 import android.util.AttributeSet
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.slider.Slider
+import kotlin.math.roundToInt
 import androidx.preference.DialogPreference
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.view.widget.setOnChangeListener
@@ -93,12 +95,16 @@ class DialogSeekBarPreference @JvmOverloads constructor(
         val textView = context.textView {
             text = textForValue(value)
             textAppearance = context.resolveThemeAttribute(android.R.attr.textAppearanceListItem)
+            textSize = 24f
         }
-        val seekBar = context.seekBar {
-            max = progressForValue(this@DialogSeekBarPreference.max)
-            progress = progressForValue(value)
-            setOnChangeListener {
-                textView.text = textForValue(valueForProgress(it))
+        val seekBar = Slider(context).apply {
+            valueFrom = 0f
+            valueTo = progressForValue(this@DialogSeekBarPreference.max).toFloat()
+            stepSize = 1f
+            value = progressForValue(this@DialogSeekBarPreference.value).toFloat().coerceIn(valueFrom, valueTo)
+            setLabelFormatter { textForValue(valueForProgress(it.roundToInt())) }
+            addOnChangeListener { _, progress, _ ->
+                textView.text = textForValue(valueForProgress(progress.roundToInt()))
             }
         }
         val dialogContent = context.verticalLayout {
@@ -115,15 +121,15 @@ class DialogSeekBarPreference @JvmOverloads constructor(
             })
             add(seekBar, lParams {
                 width = matchParent
-                horizontalMargin = dp(10)
-                bottomMargin = dp(10)
+                horizontalMargin = dp(24)
+                bottomMargin = dp(16)
             })
         }
-        AlertDialog.Builder(context)
+        MaterialAlertDialogBuilder(context)
             .setTitle(this@DialogSeekBarPreference.dialogTitle)
             .setView(dialogContent)
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                val value = valueForProgress(seekBar.progress)
+                val value = valueForProgress(seekBar.value.roundToInt())
                 setValue(value)
             }
             .setNeutralButton(R.string.default_) { _, _ ->

@@ -2,12 +2,14 @@ package com.yuyan.imemodule.view
 
 import android.content.Context
 import android.graphics.Typeface
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.text.Editable
 import android.text.InputType
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.TextUtils
+import android.text.style.RelativeSizeSpan
 import android.view.Gravity
 import android.view.ActionMode
 import android.view.Menu
@@ -18,15 +20,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputConnection
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
 import com.yuyan.imemodule.data.theme.ThemeManager
+import com.yuyan.imemodule.data.theme.Theme
 import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.keyboard.terminal.TerminalInputDispatcher
 import com.yuyan.imemodule.keyboard.terminal.TerminalModifiers
@@ -35,6 +38,7 @@ import com.yuyan.imemodule.keyboard.transform.TextTransformSession
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.service.ImeService
+import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.StringUtils
 import com.yuyan.imemodule.utils.toast
 import splitties.dimensions.dp
@@ -51,28 +55,18 @@ class KeyboardAuxiliaryPanel(
     private val onExitTerminal: () -> Unit,
 ) : LinearLayout(context) {
     val terminalKeys = LinearLayout(context).apply { orientation = VERTICAL }
+    private var appliedTheme: Theme? = null
     private val inputStrip = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-    private val source = object : EditText(context) {
-        private val caretPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        override fun onCheckIsTextEditor() = false
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val textLayout = layout ?: return
-            if (!hasWindowFocus() && isEditing && isFocused && selectionStart >= 0 && selectionStart == selectionEnd) {
-                val line = textLayout.getLineForOffset(selectionStart)
-                val x = totalPaddingLeft + textLayout.getPrimaryHorizontal(selectionStart) - scrollX
-                val top = totalPaddingTop + textLayout.getLineTop(line) - scrollY
-                val bottom = totalPaddingTop + textLayout.getLineBottom(line) - scrollY
-                caretPaint.color = currentTextColor
-                canvas.drawRect(x, top.toFloat(), x + dp(2f), bottom.toFloat(), caretPaint)
-            }
-        }
-    }.apply {
+    private val source = ImeSourceEditText(context).apply {
         hint = "输入原文"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         showSoftInputOnFocus = false
+        isFocusable = true
+        isFocusableInTouchMode = true
         minLines = 1
         maxLines = 3
+        includeFontPadding = false
+        gravity = Gravity.CENTER_VERTICAL or Gravity.START
         textSize = 16f
         setPadding(dp(8), dp(4), dp(4), dp(4))
         contentDescription = "花漾字原文"
@@ -90,14 +84,14 @@ class KeyboardAuxiliaryPanel(
         contentDescription = "花漾字预览"
         visibility = GONE
     }
-    private val providerButton = key("花漾字") { showProviders(it) }
+    private val providerButton = key("花漾字") { showProviders(it) }.apply { tag = "flower_provider" }
     private val actionButton = key("取消") { completeFlowerInput() }.apply { tag = "flower_action" }
     private val clearButton = ImageView(context).apply {
-        setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+        setImageResource(R.drawable.ic_panel_close)
         contentDescription = "清空原文"
         isFocusable = false
-        setPadding(dp(7), dp(7), dp(7), dp(7))
-        setOnClickListener { beforeAction(); source.text.clear(); source.requestFocus() }
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+        setOnClickListener { beforeAction(); source.editableText.clear(); source.requestFocus() }
     }
     private val modifierButtons = mutableMapOf<Int, TextView>()
     private val functionKeyButton = key("F(n)") { toggleFunctionKeyInput() }.apply {
@@ -120,19 +114,25 @@ class KeyboardAuxiliaryPanel(
     val isFlowerEnabled get() = CustomConstant.flowerTypeface != FlowerTypefaceMode.Disabled
     val isEditing get() = session != null && isFlowerEnabled
     val wantsSourceInput get() = isFlowerEnabled && sourceRequested
-    val hasDraft get() = source.text.isNotEmpty() || isEditing && hasPendingInput()
+    val hasDraft get() = source.editableText.isNotEmpty() || isEditing && hasPendingInput()
     val inputConnection: InputConnection? get() = if (isEditing) sourceConnection else null
     private val provider get() = TextTransformers.available().first { it.id == "flower:${CustomConstant.flowerTypeface.name}" }
 
     init {
         orientation = VERTICAL
         isFocusableInTouchMode = true
+        setPadding(dp(6), dp(2), dp(6), dp(2))
         val editorRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-        inputStrip.addView(providerButton, LayoutParams(dp(78), dp(44)))
+        providerButton.textSize = 14f
+        actionButton.textSize = 14f
+        providerButton.includeFontPadding = false
+        actionButton.includeFontPadding = false
+        providerButton.setPadding(dp(6), 0, dp(6), 0)
+        editorRow.addView(providerButton, LayoutParams(dp(82), -1).apply { marginEnd = dp(6) })
         inputStrip.addView(source, LayoutParams(0, -2, 1f))
-        inputStrip.addView(clearButton, LayoutParams(dp(34), dp(40)))
+        inputStrip.addView(clearButton, LayoutParams(dp(32), -1))
         editorRow.addView(inputStrip, LayoutParams(0, -2, 1f))
-        editorRow.addView(actionButton, LayoutParams(dp(60), dp(48)))
+        editorRow.addView(actionButton, LayoutParams(dp(52), -1).apply { marginStart = dp(6) })
         addView(editorRow, LayoutParams(-1, -2))
         addView(preview, LayoutParams(-1, -2))
         val first = row(terminalKeys)
@@ -174,6 +174,7 @@ class KeyboardAuxiliaryPanel(
             if (!changingFocus && isFlowerEnabled) {
                 if (focused && !isEditing) activateSource()
             }
+            inputStrip.isActivated = focused && isEditing
         }
         val editorActions = object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -189,11 +190,17 @@ class KeyboardAuxiliaryPanel(
         refresh()
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val rowHeight = (EnvironmentSingleton.instance.heightForCandidatesArea - paddingTop - paddingBottom).coerceAtLeast(dp(32))
+        if (source.minimumHeight != rowHeight) source.minimumHeight = rowHeight
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    }
+
     fun toggleFlowerMode() {
         if (isFlowerEnabled) {
             if (isEditing) beforeAction()
             val wasEditing = isEditing
-            val finalText = if (wasEditing && !previewOnly) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
+            val finalText = if (wasEditing && !previewOnly) StringUtils.converted2FlowerTypeface(source.editableText.toString()) else null
             closeDraft(commit = !previewOnly, finalText = finalText)
             CustomConstant.flowerTypeface = FlowerTypefaceMode.Disabled
             sourceRequested = false
@@ -213,7 +220,7 @@ class KeyboardAuxiliaryPanel(
 
     fun completeFlowerInput() {
         if (!isFlowerEnabled) return
-        if (source.text.isEmpty() && !(isEditing && hasPendingInput())) {
+        if (source.editableText.isEmpty() && !(isEditing && hasPendingInput())) {
             val wasEditing = isEditing
             closeDraft(false)
             CustomConstant.flowerTypeface = FlowerTypefaceMode.Disabled
@@ -224,7 +231,7 @@ class KeyboardAuxiliaryPanel(
             return
         }
         beforeAction()
-        closeDraft(true, StringUtils.converted2FlowerTypeface(source.text.toString()))
+        closeDraft(true, StringUtils.converted2FlowerTypeface(source.editableText.toString()))
         onInputRouteChanged()
         sourceRequested = true
         activateSource()
@@ -242,17 +249,21 @@ class KeyboardAuxiliaryPanel(
             preview.visibility = if (failed || previewOnly && result.isNotEmpty()) VISIBLE else GONE
             refreshAction()
         }
+        source.localEditing = true
         source.requestFocus()
-        session?.update(source.text.toString(), provider)
+        inputStrip.isActivated = source.isFocused
+        session?.update(source.editableText.toString(), provider)
         onModeChanged()
     }
 
     private fun closeDraft(commit: Boolean, finalText: String? = null) {
         val previous = session ?: return
         session = null
+        source.localEditing = false
+        inputStrip.isActivated = false
         sourceConnection.finishComposingText()
         previous.finish(commit, finalText)
-        source.text.clear()
+        source.editableText.clear()
         preview.text = ""
         preview.visibility = GONE
         observedHostComposition = false
@@ -283,7 +294,7 @@ class KeyboardAuxiliaryPanel(
 
     fun finishInput() {
         cancelFunctionKeyInput()
-        val finalText = if (isEditing && !previewOnly && source.text.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.text.toString()) else null
+        val finalText = if (isEditing && !previewOnly && source.editableText.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.editableText.toString()) else null
         closeDraft(commit = !previewOnly, finalText = finalText)
         dispatcher.modifiers.clear()
         moreRows.visibility = GONE
@@ -315,7 +326,8 @@ class KeyboardAuxiliaryPanel(
             actionButton.text = label
             onModeChanged()
         }
-        clearButton.visibility = if (source.text.isNotEmpty()) VISIBLE else GONE
+        actionButton.isSelected = hasDraft
+        clearButton.visibility = if (source.editableText.isNotEmpty()) VISIBLE else INVISIBLE
     }
 
     fun refresh() {
@@ -353,13 +365,23 @@ class KeyboardAuxiliaryPanel(
 
     fun updateTheme() {
         val theme = ThemeManager.activeTheme
+        if (appliedTheme === theme) return
+        appliedTheme = theme
         setBackgroundColor(theme.barColor)
         terminalKeys.setBackgroundColor(theme.barColor)
-        inputStrip.background = GradientDrawable().apply { cornerRadius = dp(22f); setColor(theme.keyBackgroundColor) }
+        inputStrip.background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_activated), KeyboardUiStyle.rounded(theme.keyBackgroundColor, dp(10f)).apply {
+                setStroke(dp(1), ColorUtils.setAlphaComponent(theme.keyTextColor, 100))
+            })
+            addState(intArrayOf(), KeyboardUiStyle.rounded(theme.keyBackgroundColor, dp(10f)).apply {
+                setStroke(dp(1), ColorUtils.setAlphaComponent(theme.keyTextColor, 32))
+            })
+        }
         source.background = null
         source.setTextColor(theme.keyTextColor)
-        source.setHintTextColor(theme.keyTextColor)
-        clearButton.drawable?.setTint(theme.keyTextColor)
+        source.setHintTextColor(KeyboardUiStyle.secondaryText(theme))
+        clearButton.drawable?.setTint(KeyboardUiStyle.secondaryText(theme))
+        clearButton.background = KeyboardUiStyle.buttonBackground(theme, dp(10f), android.graphics.Color.TRANSPARENT)
         providerButton.setTextColor(theme.keyTextColor)
         val indicator = context.getDrawable(R.drawable.ic_menu_arrow_down)?.mutate()?.apply {
             setBounds(0, 0, dp(12), dp(12))
@@ -367,17 +389,14 @@ class KeyboardAuxiliaryPanel(
         }
         providerButton.compoundDrawablePadding = dp(2)
         providerButton.setCompoundDrawablesRelative(null, null, indicator, null)
-        providerButton.background = GradientDrawable().apply { cornerRadius = dp(22f); setColor(theme.functionKeyBackgroundColor) }
-        actionButton.setTextColor(theme.keyTextColor)
-        actionButton.background = null
-        preview.setTextColor(theme.keyTextColor)
+        providerButton.background = KeyboardUiStyle.buttonBackground(theme, dp(10f), theme.functionKeyBackgroundColor)
+        actionButton.setTextColor(KeyboardUiStyle.buttonText(theme))
+        actionButton.background = KeyboardUiStyle.buttonBackground(theme, dp(10f), theme.functionKeyBackgroundColor)
+        preview.setTextColor(KeyboardUiStyle.secondaryText(theme))
         fun style(view: View) {
             if (view is TextView) {
-                view.setTextColor(if (view.isSelected) theme.accentKeyTextColor else theme.keyTextColor)
-                view.background = GradientDrawable().apply {
-                    cornerRadius = dp(5f)
-                    setColor(if (view.isSelected) theme.accentKeyBackgroundColor else theme.keyBackgroundColor)
-                }
+                view.setTextColor(KeyboardUiStyle.buttonText(theme))
+                view.background = KeyboardUiStyle.buttonBackground(theme, dp(8f))
             }
             if (view is ViewGroup) repeat(view.childCount) { style(view.getChildAt(it)) }
         }
@@ -386,15 +405,24 @@ class KeyboardAuxiliaryPanel(
 
     private fun showProviders(anchor: View) {
         val choices = FlowerTypefaceMode.entries.filter { it != FlowerTypefaceMode.Disabled }
+        val providers = TextTransformers.available()
         val popup = PopupMenu(context, anchor).apply {
             choices.forEachIndexed { index, mode ->
-                val name = TextTransformers.available().first { it.id == "flower:${mode.name}" }.displayName
-                menu.add(0, index, index, name)
+                val name = providers.first { it.id == "flower:${mode.name}" }.displayName
+                val sample = StringUtils.converted2FlowerTypeface("你好", mode)
+                val label = SpannableString("$name  $sample").apply {
+                    setSpan(RelativeSizeSpan(0.85f), name.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                menu.add(0, index, index, label).apply {
+                    isCheckable = true
+                    isChecked = mode == CustomConstant.flowerTypeface
+                }
             }
+            menu.setGroupCheckable(0, true, true)
             setOnMenuItemClickListener {
                 beforeAction()
                 CustomConstant.flowerTypeface = choices[it.itemId]
-                session?.update(source.text.toString(), provider)
+                session?.update(source.editableText.toString(), provider)
                 onModeChanged()
                 refresh()
                 true
@@ -431,6 +459,8 @@ class KeyboardAuxiliaryPanel(
         text = label
         contentDescription = label
         textSize = 11f
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
         gravity = Gravity.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isClickable = true

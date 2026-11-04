@@ -32,6 +32,10 @@ class KeyboardPreviewView(context: Context) : RelativeLayout(context) {
         setBackground(background)
     }
 
+    fun updateKeyAppearance(theme: Theme) {
+        qwerTextContainer?.setTheme(theme)
+    }
+
     fun setTheme(theme: Theme) {
         initView()
         qwerTextContainer?.setTheme(theme)

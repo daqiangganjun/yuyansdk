@@ -65,7 +65,7 @@ class ThemeFragment : Fragment() {
             outlineProvider = ViewOutlineProvider.BOUNDS
             elevation = dp(0.5f)
         }
-        tabLayout = TabLayout(this)
+        tabLayout = TabLayout(this).apply { setBackgroundColor(getColor(R.color.settings_background)) }
         viewPager = ViewPager2(this).apply {
             adapter = object : FragmentStateAdapter(this@ThemeFragment) {
                 override fun getItemCount() = 2
@@ -93,8 +93,8 @@ class ThemeFragment : Fragment() {
                 centerHorizontally()
                 bottomOfParent()
             })
-            backgroundColor = styledColor(android.R.attr.colorPrimary)
-            elevation = dp(4f)
+            backgroundColor = getColor(R.color.settings_background)
+            elevation = 0f
         }
         constraintLayout {
             add(previewWrapper, lParams(height = wrapContent) {

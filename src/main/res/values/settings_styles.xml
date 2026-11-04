@@ -1,0 +1,42 @@
+<resources>
+    <style name="PreferenceThemeOverlay.Modern" parent="PreferenceThemeOverlay.v14.Material">
+        <item name="preferenceStyle">@style/Preference.Modern</item>
+        <item name="preferenceCategoryStyle">@style/Preference.Category.Modern</item>
+        <item name="switchPreferenceCompatStyle">@style/Preference.Switch.Modern</item>
+        <item name="dialogPreferenceStyle">@style/Preference.Dialog.Modern</item>
+        <item name="editTextPreferenceStyle">@style/Preference.EditText.Modern</item>
+        <item name="preferenceFragmentCompatStyle">@style/PreferenceFragment.Modern</item>
+    </style>
+    <style name="Preference.Modern" parent="Preference.Material">
+        <item name="layout">@layout/preference_modern</item>
+        <item name="iconSpaceReserved">false</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+    </style>
+    <style name="Preference.Category.Modern" parent="Preference.Category.Material">
+        <item name="layout">@layout/preference_category_modern</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+    <style name="Preference.Switch.Modern" parent="Preference.SwitchPreferenceCompat.Material">
+        <item name="layout">@layout/preference_modern</item>
+        <item name="widgetLayout">@layout/preference_widget_material_switch</item>
+        <item name="iconSpaceReserved">false</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+    </style>
+    <style name="Preference.Dialog.Modern" parent="Preference.DialogPreference.Material">
+        <item name="layout">@layout/preference_modern</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+    <style name="Preference.EditText.Modern" parent="Preference.DialogPreference.EditTextPreference.Material">
+        <item name="layout">@layout/preference_modern</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+    <style name="PreferenceFragment.Modern" parent="PreferenceFragment.Material">
+        <item name="android:divider">@null</item>
+        <item name="android:dividerHeight">0dp</item>
+    </style>
+    <style name="ThemeOverlay.Yuyan.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="android:windowBackground">@drawable/bg_settings_dialog</item>
+    </style>
+</resources>

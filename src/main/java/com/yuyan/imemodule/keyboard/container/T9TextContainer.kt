@@ -79,14 +79,16 @@ open class T9TextContainer(context: Context?, inputView: InputView, skbValue: In
     private fun updateKeyboardView() {
         val softKeyboard = mMajorView!!.getSoftKeyboard()
         val softKeySymbolHolder = softKeyboard.getKeyByCode(InputModeSwitcher.USER_KEYCODE_LEFT_SYMBOL) ?: return
-        val prefixLayoutParams = LayoutParams(softKeySymbolHolder.width(), LayoutParams.MATCH_PARENT)
-        prefixLayoutParams.setMargins(
-            softKeyboard.keyXMargin,
-            softKeySymbolHolder.mTop + softKeyboard.keyYMargin,
-            softKeyboard.keyXMargin,
-            EnvironmentSingleton.instance.skbHeight - softKeySymbolHolder.mBottom + softKeyboard.keyYMargin
-        )
         mPrefixAreaHeight = softKeySymbolHolder.height() - 2 * softKeyboard.keyYMargin
+        val prefixLayoutParams = LayoutParams(
+            (softKeySymbolHolder.width() - 2 * softKeyboard.keyXMargin).coerceAtLeast(1),
+            mPrefixAreaHeight.coerceAtLeast(1)
+        ).apply {
+            leftToLeft = LayoutParams.PARENT_ID
+            topToTop = LayoutParams.PARENT_ID
+            leftMargin = softKeySymbolHolder.mLeft + softKeyboard.keyXMargin
+            topMargin = softKeySymbolHolder.mTop + softKeyboard.keyYMargin
+        }
         val prefixLayoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         mRVLeftPrefix.setLayoutManager(prefixLayoutManager)
         if (mRVLeftPrefix.parent != null) {

@@ -3,23 +3,18 @@ package com.yuyan.imemodule.speech
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
-import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.RelativeLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.yuyan.imemodule.service.ImeService
-import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.AppUtil
 import java.util.concurrent.atomic.AtomicBoolean
+import splitties.dimensions.dp
 
 class VoiceInputController(
     private val service: ImeService,
@@ -31,9 +26,7 @@ class VoiceInputController(
     private val stopRecording = AtomicBoolean(true)
     private var generation = 0
     private var session: SpeechSession? = null
-    private var overlay: LinearLayout? = null
-    private var status: TextView? = null
-    private var preview: TextView? = null
+    private var overlay: VoiceInputPanel? = null
     private var finishing = false
     private var latestResult = ""
     private var worker: Thread? = null
@@ -67,12 +60,11 @@ class VoiceInputController(
         stopRecording.set(false)
         finishing = false
         showOverlay()
-        status?.text = "正在连接${provider.displayName}，松开空格结束"
+        overlay?.connecting(provider.displayName)
         val listener = object : SpeechListener {
             override fun onReady() = dispatch(token) {
                 main.removeCallbacks(connectionTimeout)
                 if (finishing) session?.finish() else {
-                    status?.text = "正在聆听，松开空格结束"
                     startRecording(provider.sampleRate, token)
                     main.postDelayed(recordingLimit, 60_000)
                 }
@@ -81,7 +73,7 @@ class VoiceInputController(
             override fun onResult(result: SpeechResult) = dispatch(token) {
                 if (result.text.isNotBlank()) {
                     latestResult = result.text
-                    preview?.text = result.text
+                    overlay?.showResult(result.text)
                 }
                 if (result.isFinal) {
                     val stillCurrent = service.activeInputConnection === target
@@ -108,7 +100,7 @@ class VoiceInputController(
         finishing = true
         stopRecording.set(true)
         main.removeCallbacks(recordingLimit)
-        status?.text = "正在等待最终识别结果"
+        overlay?.recognizing()
         if (worker?.isAlive != true) session?.finish()
         main.postDelayed(finalTimeout, 15_000)
     }
@@ -125,8 +117,6 @@ class VoiceInputController(
         latestResult = ""
         overlay?.let { root.removeView(it) }
         overlay = null
-        status = null
-        preview = null
     }
 
     @SuppressLint("MissingPermission")
@@ -142,6 +132,12 @@ class VoiceInputController(
                 check(recorder.state == AudioRecord.STATE_INITIALIZED) { "Cannot initialize audio recorder" }
                 recorder.startRecording()
                 check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Cannot start audio recorder" }
+                dispatch(token) {
+                    if (!finishing) {
+                        overlay?.listening()
+                        if (latestResult.isNotEmpty()) overlay?.showResult(latestResult)
+                    }
+                }
                 val buffer = ByteArray(sampleRate * 2 / 5)
                 var offset = 0
                 while (!stopRecording.get()) {
@@ -182,27 +178,12 @@ class VoiceInputController(
     }
 
     private fun showOverlay() {
-        val padding = (12 * service.resources.displayMetrics.density).toInt()
-        val panel = LinearLayout(service).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding, padding, padding)
-            setBackgroundColor(Color.rgb(35, 35, 35))
-            elevation = padding.toFloat()
-            isClickable = true
-        }
-        status = TextView(service).apply { setTextColor(Color.WHITE); textSize = 14f }
-        preview = TextView(service).apply { setTextColor(Color.WHITE); textSize = 18f; maxLines = 3; text = "请说话…" }
-        panel.addView(status)
-        panel.addView(preview)
-        panel.addView(Button(service).apply {
-            text = "取消"
-            setOnClickListener { cancel() }
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.END
-        })
-        val panelWidth = root.width.takeIf { it > 0 } ?: EnvironmentSingleton.instance.inputAreaWidth
-        root.addView(panel, RelativeLayout.LayoutParams(panelWidth, RelativeLayout.LayoutParams.WRAP_CONTENT)
-            .apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
+        val panel = VoiceInputPanel(service) { cancel() }
+        root.addView(panel, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
+            .apply {
+                addRule(RelativeLayout.ALIGN_PARENT_TOP)
+                setMargins(service.dp(8), service.dp(6), service.dp(8), service.dp(6))
+            })
         overlay = panel
     }
 

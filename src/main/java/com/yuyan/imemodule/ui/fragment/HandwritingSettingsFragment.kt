@@ -1,6 +1,6 @@
 package com.yuyan.imemodule.ui.fragment
 
-import android.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
 import com.yuyan.imemodule.R
@@ -67,7 +67,7 @@ class HandwritingSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstanc
 
     private fun confirmDelete() {
         val ctx = context ?: return
-        AlertDialog.Builder(ctx)
+        MaterialAlertDialogBuilder(ctx)
             .setTitle(R.string.hw_model_delete_title)
             .setMessage(R.string.hw_model_delete_message)
             .setPositiveButton(android.R.string.ok) { _, _ -> HandwritingClient.delete() }

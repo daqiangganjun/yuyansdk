@@ -178,27 +178,30 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      */
     private fun drawSoftKey(canvas: Canvas, softKey: SoftKey, keyXMargin: Int, keyYMargin: Int) {
         val bg = mKeyBackground
+        val isAccent = softKey.code == KeyEvent.KEYCODE_ENTER && !isKeyBorder
+        val isFunction = isFunctionKey(softKey.code)
         bg.shape = GradientDrawable.RECTANGLE
         bg.cornerRadius = keyRadius.toFloat() // 设置圆角半径
         bg.setBounds(softKey.mLeft + keyXMargin, softKey.mTop + keyYMargin, softKey.mRight - keyXMargin, softKey.mBottom - keyYMargin)
+        if (isAccent) {
+            bg.shape = GradientDrawable.OVAL
+            val diameter = min(softKey.width() - keyXMargin * 2, softKey.height() - keyYMargin * 2).coerceAtLeast(1)
+            val centerX = (softKey.mLeft + softKey.mRight) / 2
+            val centerY = (softKey.mTop + softKey.mBottom) / 2
+            bg.setBounds(centerX - diameter / 2, centerY - diameter / 2, centerX + diameter / 2, centerY + diameter / 2)
+        }
+        if (isKeyBorder || isAccent) {
+            bg.setColor(when {
+                isAccent -> mActiveTheme.accentKeyBackgroundColor
+                isFunction -> mActiveTheme.functionKeyBackgroundColor
+                else -> mActiveTheme.keyBackgroundColor
+            })
+            bg.draw(canvas)
+        }
         if (softKey.pressed || (mService?.hasSelection == true && softKey.code == InputModeSwitcher.USER_KEYCODE_SELECT_MODE)) {
-            bg.setColor(mActiveTheme.keyPressHighlightColor)
+            // 状态色叠在原键面上，透明主题和无边框回车也保持原有轮廓。
+            bg.setColor(if (isFunction) mActiveTheme.functionKeyPressHighlightColor else mActiveTheme.keyPressHighlightColor)
             bg.draw(canvas)
-        } else if (isKeyBorder) {
-            val background = if (isFunctionKey(softKey.code)) mActiveTheme.functionKeyBackgroundColor
-                else mActiveTheme.keyBackgroundColor
-            bg.setColor(background)
-            bg.draw(canvas)
-        } else if(softKey.code == KeyEvent.KEYCODE_ENTER) {
-               bg.setColor(mActiveTheme.accentKeyBackgroundColor)
-               bg.shape = GradientDrawable.OVAL
-               val bgWidth = softKey.width() -  keyXMargin
-               val bgHeight = softKey.height() - keyYMargin
-               val radius = min(bgWidth, bgHeight)*3/4
-               val keyMarginX = (bgWidth - radius)/2
-               val keyMarginY = (bgHeight - radius)/2
-                bg.setBounds(softKey.mLeft + keyMarginX, softKey.mTop + keyMarginY, softKey.mRight - keyMarginX, softKey.mBottom - keyMarginY)
-                bg.draw(canvas)
         }
         var keyLabel = if(skbStyleMode == SkbStyleMode.Google){
             if(InputModeSwitcher.isLower) softKey.keyLabel.lowercase() else softKey.keyLabel
@@ -211,7 +214,7 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             else if(skbStyleMode == SkbStyleMode.Google && softKey.code == InputModeSwitcher.USER_KEYCODE_CURSOR_DIRECTION && !DecodingInfo.isCandidatesEmpty) null
             else softKey.keyIcon
         val weightHeigth = softKey.height() / 4f
-        val textColor = mActiveTheme.keyTextColor
+        val textColor = if (isAccent) mActiveTheme.accentKeyTextColor else mActiveTheme.keyTextColor
         if(softKey.code == KeyEvent.KEYCODE_SHIFT_LEFT && InputModeSwitcher.isChinese && !DecodingInfo.isEngineFinish){
             keyLabel = "分词"
             keyIcon = null
@@ -242,12 +245,12 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
             val marginRight = softKey.width() - intrinsicWidth - marginLeft
             val marginTop = (softKey.height() - intrinsicHeight) / 2
             val marginBottom = softKey.height() - intrinsicHeight - marginTop
-            keyIcon.setTint(mActiveTheme.keyTextColor)
+            keyIcon.setTint(textColor)
             keyIcon.setBounds(softKey.mLeft + marginLeft, softKey.mTop + marginTop, softKey.mRight - marginRight, softKey.mBottom - marginBottom)
             keyIcon.draw(canvas)
         } else if (!TextUtils.isEmpty(keyLabel)) { //Label位于中间
             mPaint.color = textColor
-            if(keyboardFontBold) mPaint.typeface = Typeface.DEFAULT_BOLD
+            mPaint.typeface = if (keyboardFontBold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             // 功能键（符号、123、中英、去往等）按比例缩小，避免放大字号后盖过字母键。
             // 判定依据是按键码而非标签长度——九键的 ABC/DEF 同为多字符，却应与字母键等大。
             mPaint.textSize = if (isFunctionKey(softKey.code)) mNormalKeyTextSize * FUNCTION_KEY_TEXT_SCALE

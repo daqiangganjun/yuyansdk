@@ -3,11 +3,14 @@ package com.yuyan.imemodule.data.theme
 
 import android.graphics.BitmapFactory
 import android.graphics.Rect
+import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Parcelable
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
+import kotlin.math.roundToInt
 import com.yuyan.imemodule.application.Launcher
 import com.yuyan.imemodule.utils.DarkenColorFilter
 import com.yuyan.imemodule.utils.RectSerializer
@@ -68,6 +71,18 @@ sealed class Theme : Parcelable {
         override val functionKeyBackgroundColor: Int,
         override val functionKeyPressHighlightColor: Int,
     ) : Theme() {
+        val keyBackgroundOpacity: Int
+            get() = (Color.alpha(keyBackgroundColor) * 100f / 255).roundToInt()
+
+        fun withKeyBackgroundOpacity(opacity: Int): Custom {
+            val alpha = (opacity.coerceIn(0, 100) * 255f / 100).roundToInt()
+            return copy(
+                keyBackgroundColor = ColorUtils.setAlphaComponent(keyBackgroundColor, alpha),
+                functionKeyBackgroundColor = ColorUtils.setAlphaComponent(functionKeyBackgroundColor, alpha),
+                accentKeyBackgroundColor = ColorUtils.setAlphaComponent(accentKeyBackgroundColor, alpha),
+            )
+        }
+
         @Parcelize
         @Serializable
         data class CustomBackground(

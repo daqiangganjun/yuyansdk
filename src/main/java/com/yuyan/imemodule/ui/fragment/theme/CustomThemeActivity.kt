@@ -3,7 +3,7 @@ package com.yuyan.imemodule.ui.fragment.theme
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -19,7 +19,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.webkit.MimeTypeMap
-import android.widget.SeekBar
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider
+import kotlin.math.roundToInt
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
@@ -28,6 +30,7 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.net.toUri
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -54,7 +57,6 @@ import splitties.resources.styledColor
 import splitties.resources.styledDrawable
 import splitties.views.backgroundColor
 import splitties.views.bottomPadding
-import splitties.views.dsl.appcompat.switch
 import splitties.views.dsl.constraintlayout.above
 import splitties.views.dsl.constraintlayout.before
 import splitties.views.dsl.constraintlayout.below
@@ -70,7 +72,6 @@ import splitties.views.dsl.constraintlayout.topOfParent
 import splitties.views.dsl.constraintlayout.topToTopOf
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.matchParent
-import splitties.views.dsl.core.seekBar
 import splitties.views.dsl.core.textView
 import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
@@ -106,8 +107,9 @@ class CustomThemeActivity : AppCompatActivity() {
 
     private val toolbar by lazy {
         view(::Toolbar) {
-            backgroundColor = styledColor(android.R.attr.colorPrimary)
-            elevation = dp(4f)
+            backgroundColor = getColor(R.color.settings_background)
+            setTitleTextColor(getColor(R.color.settings_text))
+            elevation = dp(1f)
         }
     }
 
@@ -128,7 +130,7 @@ class CustomThemeActivity : AppCompatActivity() {
         createTextView(R.string.dark_keys, ripple = true)
     }
     private val variantSwitch by lazy {
-        switch {
+        MaterialSwitch(this).apply {
             isChecked = false
         }
     }
@@ -139,8 +141,31 @@ class CustomThemeActivity : AppCompatActivity() {
         createTextView()
     }
     private val brightnessSeekBar by lazy {
-        seekBar {
-            max = 100
+        Slider(this).apply {
+            valueFrom = 0f
+            valueTo = 100f
+            stepSize = 1f
+            contentDescription = getString(R.string.brightness)
+            setLabelFormatter { "${it.roundToInt()}%" }
+        }
+    }
+
+    private val keyMaskLabel by lazy { createTextView(R.string.key_background_mask_strength) }
+    private val keyMaskValue by lazy { createTextView() }
+    private val keyMaskHint by lazy {
+        createTextView(R.string.key_background_mask_hint).apply {
+            textSize = 13f
+            setTextColor(getColor(R.color.settings_secondary_text))
+        }
+    }
+    private val keyMaskSlider by lazy {
+        Slider(this).apply {
+            valueFrom = 0f
+            valueTo = 100f
+            stepSize = 1f
+            tag = "theme_key_mask"
+            contentDescription = getString(R.string.key_background_mask_strength)
+            setLabelFormatter { getString(R.string.theme_percentage, it.roundToInt()) }
         }
     }
 
@@ -186,6 +211,24 @@ class CustomThemeActivity : AppCompatActivity() {
             })
             add(brightnessSeekBar, lParams(matchConstraints, wrapContent) {
                 below(brightnessLabel)
+                centerHorizontally(itemMargin)
+                above(keyMaskLabel)
+            })
+            add(keyMaskLabel, lParams(matchConstraints, lineHeight) {
+                below(brightnessSeekBar, dp(12))
+                startOfParent(itemMargin)
+                before(keyMaskValue)
+            })
+            add(keyMaskValue, lParams(wrapContent, lineHeight) {
+                topToTopOf(keyMaskLabel)
+                endOfParent(itemMargin)
+            })
+            add(keyMaskHint, lParams(matchConstraints, wrapContent) {
+                below(keyMaskLabel)
+                centerHorizontally(itemMargin)
+            })
+            add(keyMaskSlider, lParams(matchConstraints, wrapContent) {
+                below(keyMaskHint, dp(8))
                 centerHorizontally(itemMargin)
                 bottomOfParent()
             })
@@ -234,21 +277,27 @@ class CustomThemeActivity : AppCompatActivity() {
     }
 
     private fun BackgroundStates.setKeyVariant(background: Theme.Custom.CustomBackground, darkKeys: Boolean) {
+        val original = theme
         theme = if (darkKeys)
             ThemePreset.TransparentLight.deriveCustomBackground(
                 theme.name,
                 background.croppedFilePath,
                 background.srcFilePath,
-                brightnessSeekBar.progress,
+                brightnessSeekBar.value.roundToInt(),
                 background.cropRect
             ) else
             ThemePreset.TransparentDark.deriveCustomBackground(
                 theme.name,
                 background.croppedFilePath,
                 background.srcFilePath,
-                brightnessSeekBar.progress,
+                brightnessSeekBar.value.roundToInt(),
                 background.cropRect
             )
+        theme = theme.copy(
+            keyBackgroundColor = ColorUtils.setAlphaComponent(theme.keyBackgroundColor, Color.alpha(original.keyBackgroundColor)),
+            functionKeyBackgroundColor = ColorUtils.setAlphaComponent(theme.functionKeyBackgroundColor, Color.alpha(original.functionKeyBackgroundColor)),
+            accentKeyBackgroundColor = ColorUtils.setAlphaComponent(theme.accentKeyBackgroundColor, Color.alpha(original.accentKeyBackgroundColor)),
+        )
         previewUi.setTheme(theme, filteredDrawable)
     }
 
@@ -282,13 +331,25 @@ class CustomThemeActivity : AppCompatActivity() {
             outlineProvider = ViewOutlineProvider.BOUNDS
             elevation = dp(4f)
         }
+        previewUi.updateKeyAppearance(theme)
 
         if (theme.backgroundImage == null) {
             brightnessLabel.visibility = View.GONE
+            brightnessValue.visibility = View.GONE
             cropLabel.visibility = View.GONE
             variantLabel.visibility = View.GONE
             variantSwitch.visibility = View.GONE
             brightnessSeekBar.visibility = View.GONE
+        }
+        keyMaskSlider.value = theme.keyBackgroundOpacity.toFloat()
+        keyMaskValue.text = getString(R.string.theme_percentage, theme.keyBackgroundOpacity)
+        keyMaskSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                val opacity = value.roundToInt()
+                theme = theme.withKeyBackgroundOpacity(opacity)
+                keyMaskValue.text = getString(R.string.theme_percentage, opacity)
+                previewUi.updateKeyAppearance(theme)
+            }
         }
         enableEdgeToEdge()
         ViewCompat.setOnApplyWindowInsetsListener(ui) { _, windowInsets ->
@@ -306,7 +367,7 @@ class CustomThemeActivity : AppCompatActivity() {
         supportActionBar!!.setDisplayHomeAsUpEnabled(true)
         setContentView(ui)
         whenHasBackground { background ->
-            brightnessSeekBar.progress = background.brightness
+            brightnessSeekBar.value = background.brightness.coerceIn(0, 100).toFloat()
             variantSwitch.isChecked = !theme.isDark
             launcher = registerForActivityResult(CropImageContract()) {
                 if (!it.isSuccessful) {
@@ -340,15 +401,9 @@ class CustomThemeActivity : AppCompatActivity() {
             variantSwitch.setOnCheckedChangeListener { _, isChecked ->
                 setKeyVariant(background, darkKeys = isChecked)
             }
-            brightnessSeekBar.setOnSeekBarChangeListener(object :
-                SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(bar: SeekBar) {}
-                override fun onStopTrackingTouch(bar: SeekBar) {}
-
-                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                    if (fromUser) updateState()
-                }
-            })
+            brightnessSeekBar.addOnChangeListener { _, _, fromUser ->
+                if (fromUser) updateState()
+            }
         }
         if (newCreated) {
             cropLabel.visibility = View.GONE
@@ -356,8 +411,10 @@ class CustomThemeActivity : AppCompatActivity() {
                 launchCrop(EnvironmentSingleton.instance.skbWidth, EnvironmentSingleton.instance.inputAreaHeight)
             }
         } else {
-            whenHasBackground {
+            if (theme.backgroundImage == null) previewUi.setTheme(theme)
+            else whenHasBackground {
                 updateState()
+                previewUi.setTheme(theme, filteredDrawable)
             }
         }
 
@@ -402,7 +459,7 @@ class CustomThemeActivity : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun BackgroundStates.updateState() {
-        val progress = brightnessSeekBar.progress
+        val progress = brightnessSeekBar.value.roundToInt()
         brightnessValue.text = "$progress%"
         filteredDrawable.colorFilter = DarkenColorFilter(100 - progress)
         previewUi.background = filteredDrawable
@@ -448,7 +505,7 @@ class CustomThemeActivity : AppCompatActivity() {
                     whenHasBackground {
                         newTheme = theme.copy(
                             backgroundImage = it.copy(
-                                brightness = brightnessSeekBar.progress,
+                                brightness = brightnessSeekBar.value.roundToInt(),
                                 cropRect = cropRect
                             )
                         )
@@ -475,7 +532,7 @@ class CustomThemeActivity : AppCompatActivity() {
     }
 
     private fun promptDelete() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.delete_theme)
             .setMessage(getString(R.string.delete_theme_msg, theme.name))
             .setPositiveButton(android.R.string.ok) { _, _ ->

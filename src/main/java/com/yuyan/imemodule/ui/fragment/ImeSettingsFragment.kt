@@ -8,7 +8,7 @@ import androidx.annotation.IdRes
 import androidx.annotation.StringRes
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceCategory
-import androidx.preference.PreferenceFragmentCompat
+import com.yuyan.imemodule.ui.fragment.base.CsPreferenceFragment
 import com.yuyan.imemodule.BuildConfig
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.application.CustomConstant
@@ -17,7 +17,7 @@ import com.yuyan.imemodule.utils.addPreference
 import androidx.core.net.toUri
 import com.yuyan.imemodule.ui.setup.SetupActivity
 
-class ImeSettingsFragment : PreferenceFragmentCompat() {
+class ImeSettingsFragment : CsPreferenceFragment() {
 
     private fun PreferenceCategory.addDestinationPreference(
         @StringRes title: Int,
@@ -52,7 +52,7 @@ class ImeSettingsFragment : PreferenceFragmentCompat() {
                 )
                 addDestinationPreference(
                     R.string.ime_settings_voice,
-                    R.drawable.ic_menu_language,
+                    R.drawable.ic_panel_mic,
                     R.id.action_settingsFragment_to_voiceSettingsFragment
                 )
             }

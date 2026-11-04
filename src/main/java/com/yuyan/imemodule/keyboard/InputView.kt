@@ -433,14 +433,19 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         return false
     }
 
-    fun updateTheme() {
-        auxiliaryPanel.updateTheme()
-        // 本身不绘制内容，设为 null 比铺一层透明色少一次无效绘制
-        background = null
-        val activeTheme = ThemeManager.activeTheme
-        val keyTextColor = activeTheme.keyTextColor
-        val env = EnvironmentSingleton.instance
+    fun updateKeyboardSize() {
+        if (::mOnehandHoderLayout.isInitialized) {
+            mOnehandHoderLayout.layoutParams = mOnehandHoderLayout.layoutParams.apply {
+                height = EnvironmentSingleton.instance.skbHeight
+            }
+        }
+        updateKeyboardBackground()
+        requestLayout()
+    }
 
+    private fun updateKeyboardBackground() {
+        val activeTheme = ThemeManager.activeTheme
+        val env = EnvironmentSingleton.instance
         val background = activeTheme.backgroundDrawable(ThemeManager.prefs.keyBorder.getValue())
         if (background is BitmapDrawable) {
             mSkbRoot.background = scaledBackground(background.bitmap, env.skbWidth, env.inputAreaHeight)
@@ -451,6 +456,16 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.background = background
         }
         applyFloatKeyboardOutline(env.keyboardModeFloat)
+    }
+
+    fun updateTheme() {
+        auxiliaryPanel.updateTheme()
+        // 本身不绘制内容，设为 null 比铺一层透明色少一次无效绘制
+        background = null
+        val activeTheme = ThemeManager.activeTheme
+        val keyTextColor = activeTheme.keyTextColor
+        val env = EnvironmentSingleton.instance
+        updateKeyboardBackground()
         composingBubble.apply {
             setTextColor(keyTextColor)
             textSize = EnvironmentSingleton.instance.composingTextSize
