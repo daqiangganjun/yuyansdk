@@ -11,6 +11,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.Parcelable
 import android.view.Menu
@@ -44,6 +45,8 @@ import com.yuyan.imemodule.R
 import com.yuyan.imemodule.data.theme.Theme
 import com.yuyan.imemodule.data.theme.ThemeFilesManager
 import com.yuyan.imemodule.data.theme.ThemePreset
+import com.yuyan.imemodule.data.theme.ThemeBackgroundCache
+import com.yuyan.imemodule.data.theme.FocalBackgroundDrawable
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.DarkenColorFilter
 import com.yuyan.imemodule.keyboard.KeyboardPreviewView
@@ -262,7 +265,11 @@ class CustomThemeActivity : AppCompatActivity() {
         var tempImageFile: File? = null
         var cropRect: Rect? = null
         lateinit var croppedBitmap: Bitmap
-        lateinit var filteredDrawable: BitmapDrawable
+        lateinit var filteredDrawable: Drawable
+        var previewSourceFile: File? = null
+        var rotation: Int? = null
+        var flipHorizontal = false
+        var flipVertical = false
         lateinit var srcImageFile: File
         lateinit var croppedImageFile: File
     }
@@ -294,11 +301,13 @@ class CustomThemeActivity : AppCompatActivity() {
                 background.cropRect
             )
         theme = theme.copy(
+            backgroundImage = original.backgroundImage,
             keyBackgroundColor = ColorUtils.setAlphaComponent(theme.keyBackgroundColor, Color.alpha(original.keyBackgroundColor)),
             functionKeyBackgroundColor = ColorUtils.setAlphaComponent(theme.functionKeyBackgroundColor, Color.alpha(original.functionKeyBackgroundColor)),
             accentKeyBackgroundColor = ColorUtils.setAlphaComponent(theme.accentKeyBackgroundColor, Color.alpha(original.accentKeyBackgroundColor)),
         )
-        previewUi.setTheme(theme, filteredDrawable)
+        previewUi.updateKeyAppearance(theme)
+        updateState()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -310,6 +319,9 @@ class CustomThemeActivity : AppCompatActivity() {
                 croppedImageFile = File(it.croppedFilePath)
                 srcImageFile = File(it.srcFilePath)
                 cropRect = it.cropRect
+                rotation = it.rotation
+                flipHorizontal = it.flipHorizontal
+                flipVertical = it.flipVertical
                 croppedBitmap = BitmapFactory.decodeFile(it.croppedFilePath)
                 filteredDrawable = BitmapDrawable(resources, croppedBitmap)
             }
@@ -379,15 +391,17 @@ class CustomThemeActivity : AppCompatActivity() {
                     if (newCreated) {
                         srcImageExtension = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(it.originalUri!!))
                         srcImageBuffer = contentResolver.openInputStream(it.originalUri)!!.use { x -> x.readBytes() }
+                        previewSourceFile?.delete()
+                        previewSourceFile = File.createTempFile("theme-source-", ".image", cacheDir).apply { writeBytes(srcImageBuffer!!) }
                     }
                     cropRect = it.cropRect!!
-
-                    croppedBitmap = Bitmap.createScaledBitmap(
-                        it.getBitmap(this@CustomThemeActivity)!!,
-                        EnvironmentSingleton.instance.skbWidth,
-                        EnvironmentSingleton.instance.inputAreaHeight,
-                        true
-                    )
+                    rotation = it.rotation
+                    flipHorizontal = it.flipHorizontal
+                    flipVertical = it.flipVertical
+                    croppedBitmap = it.getBitmap(this@CustomThemeActivity)!!.let { bitmap ->
+                        if (android.os.Build.VERSION.SDK_INT >= 26 && bitmap.config == Bitmap.Config.HARDWARE)
+                            bitmap.copy(Bitmap.Config.ARGB_8888, false) else bitmap
+                    }
                     filteredDrawable = BitmapDrawable(resources, croppedBitmap)
                     updateState()
                 }
@@ -431,6 +445,14 @@ class CustomThemeActivity : AppCompatActivity() {
             CropImageContractOptions(
                 uri = srcImageFile.takeIf { it.exists() }?.toUri(),
                 CropImageOptions(
+                    activityTitle = "选择背景中心点",
+                    showCropLabel = true,
+                    cropperLabelText = "移动选框确定中心，背景随键盘高度展开",
+                    cropperLabelTextSize = 14f * resources.displayMetrics.scaledDensity,
+                    autoZoomEnabled = false,
+                    initialRotation = rotation ?: -1,
+                    flipHorizontally = flipHorizontal,
+                    flipVertically = flipVertical,
                     initialCropWindowRectangle = cropRect,
                     guidelines = CropImageView.Guidelines.ON_TOUCH,
                     borderLineColor = Color.WHITE,
@@ -442,16 +464,21 @@ class CustomThemeActivity : AppCompatActivity() {
                     aspectRatioX = w,
                     aspectRatioY = h,
                     fixAspectRatio = true,
+                    outputRequestWidth = w,
+                    outputRequestHeight = h,
+                    outputRequestSizeOptions = CropImageView.RequestSizeOptions.RESIZE_INSIDE,
                     customOutputUri = tempImageFile!!.toUri(),
                     outputCompressFormat = Bitmap.CompressFormat.PNG,
                     cropMenuCropButtonIcon = R.drawable.ic_menu_done,
+                    cropMenuCropButtonTitle = "确定中心",
                     showProgressBar = true,
                     progressBarColor = styledColor(android.R.attr.colorAccent),
-                    activityMenuIconColor = styledColor(android.R.attr.colorControlNormal),
-                    activityMenuTextColor = styledColor(android.R.attr.colorForeground),
+                    activityMenuIconColor = getColor(R.color.settings_text),
+                    activityMenuTextColor = getColor(R.color.settings_text),
                     activityBackgroundColor = styledColor(android.R.attr.colorBackground),
-                    toolbarColor = styledColor(android.R.attr.colorPrimary),
-                    toolbarBackButtonColor = styledColor(android.R.attr.colorControlNormal)
+                    toolbarColor = getColor(R.color.settings_background),
+                    toolbarTitleColor = getColor(R.color.settings_text),
+                    toolbarBackButtonColor = getColor(R.color.settings_text)
                 )
             )
         )
@@ -461,13 +488,19 @@ class CustomThemeActivity : AppCompatActivity() {
     private fun BackgroundStates.updateState() {
         val progress = brightnessSeekBar.value.roundToInt()
         brightnessValue.text = "$progress%"
-        filteredDrawable.colorFilter = DarkenColorFilter(100 - progress)
+        val background = theme.backgroundImage!!
+        filteredDrawable = background.copy(
+            srcFilePath = previewSourceFile?.path ?: srcImageFile.path,
+            cropRect = cropRect, brightness = progress, rotation = rotation,
+            flipHorizontal = flipHorizontal, flipVertical = flipVertical,
+        ).toDrawable() ?: FocalBackgroundDrawable(croppedBitmap).apply { colorFilter = DarkenColorFilter(100 - progress) }
         previewUi.background = filteredDrawable
     }
 
     private fun cancel() {
         whenHasBackground {
             tempImageFile?.delete()
+            previewSourceFile?.let { ThemeBackgroundCache.invalidate(it.path); it.delete() }
         }
         setResult(
             Activity.RESULT_CANCELED,
@@ -506,7 +539,8 @@ class CustomThemeActivity : AppCompatActivity() {
                         newTheme = theme.copy(
                             backgroundImage = it.copy(
                                 brightness = brightnessSeekBar.value.roundToInt(),
-                                cropRect = cropRect
+                                cropRect = cropRect,
+                                rotation = rotation, flipHorizontal = flipHorizontal, flipVertical = flipVertical,
                             )
                         )
                     }
@@ -529,6 +563,11 @@ class CustomThemeActivity : AppCompatActivity() {
             }
         )
         finish()
+    }
+
+    override fun onDestroy() {
+        backgroundStates.previewSourceFile?.let { ThemeBackgroundCache.invalidate(it.path); it.delete() }
+        super.onDestroy()
     }
 
     private fun promptDelete() {

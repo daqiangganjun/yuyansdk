@@ -412,6 +412,7 @@ class KeyboardLoaderUtil private constructor() {
     }
 
     fun getSoftKeyboard(skbValue: Int): SoftKeyboard {
+        if (skbValue == InputModeSwitcher.MASK_SKB_LAYOUT_TEXTEDIT) return loadBaseSkb(skbValue)
         var softKeyboard = mSoftKeyboardMap[skbValue]
         if (softKeyboard == null) {
             softKeyboard = loadBaseSkb(skbValue)
@@ -531,7 +532,8 @@ class KeyboardLoaderUtil private constructor() {
     private fun createTextEditKeys(codes: Array<Int>): Array<SoftKey> {
         val softKeys = mutableListOf<SoftKey>()
         val keyPreset = KeyPreset.textEditKeyPreset
-        for(code in codes){
+        for(originalCode in codes){
+            val code = if (InputModeSwitcher.isTerminalMode && originalCode == KeyEvent.KEYCODE_DEL) KeyEvent.KEYCODE_ENTER else originalCode
             val labels = keyPreset[code]
             softKeys.add(SoftKey(code = code, label = labels?.getOrNull(0) ?: "").apply {
                 widthF = 0.2475f

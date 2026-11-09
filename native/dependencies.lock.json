@@ -12,7 +12,7 @@
     {"name": "librime-octagram", "url": "https://github.com/lotem/librime-octagram.git", "revision": "bfb168ca33d8b372596fdf2007933f3da1cf360e"},
     {"name": "librime-predict", "url": "https://github.com/rime/librime-predict.git", "revision": "920bd41ebf6f9bf6855d14fbe80212e54e749791"},
     {"name": "snappy", "url": "https://github.com/google/snappy.git", "revision": "747488a9f3d0daf9b639b6704d7188fba48af179"},
-    {"name": "rime-frost", "url": "https://github.com/gaboolic/rime-frost.git", "revision": "7a7c311efee1d8d0884624677a1f7f99cade457f"},
-    {"name": "rime-ice", "url": "https://github.com/iDvel/rime-ice.git", "revision": "59fcb4a6bfa71e6ba4fc83af07ee55f0c5b76081"}
+    {"name": "rime-frost", "url": "https://github.com/gaboolic/rime-frost.git", "revision": "3ba4f1df224823079b947ce1553441c36097b124"},
+    {"name": "rime-ice", "url": "https://github.com/iDvel/rime-ice.git", "revision": "99662ba01e3affa6a0f009174ca530b887bac3b6"}
   ]
 }

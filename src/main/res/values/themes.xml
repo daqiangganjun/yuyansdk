@@ -30,12 +30,11 @@
         <item name="alertDialogTheme">@style/ThemeOverlay.Yuyan.Dialog</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.Yuyan.Dialog</item>
     </style>
-    <style name="Theme.CropActivityTheme" parent="Theme.AppCompat.DayNight">
+    <style name="Theme.CropActivityTheme" parent="Theme.AppTheme">
         <item name="android:statusBarColor">?android:attr/colorPrimary</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
-        <item name="android:windowTranslucentNavigation">true</item>
     </style>
 
 </resources>

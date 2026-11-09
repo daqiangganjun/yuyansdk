@@ -15,9 +15,11 @@ def run(*args, cwd=None):
     subprocess.run([str(arg) for arg in args], cwd=cwd, check=True)
 
 
-def prepare(root):
+def prepare(root, include_ice=False):
     root.mkdir(parents=True, exist_ok=True)
     for repo in LOCK["repositories"]:
+        if repo["name"] == "rime-ice" and not include_ice:
+            continue
         folder = root / repo["name"]
         if not (folder / ".git").exists():
             folder.mkdir(parents=True, exist_ok=True)

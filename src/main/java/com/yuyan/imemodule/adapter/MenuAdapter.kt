@@ -23,6 +23,8 @@ import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
+import com.yuyan.imemodule.data.theme.ThemeControls
+import splitties.dimensions.dp
 
 class MenuAdapter (context: Context?, val data: MutableList<SkbFunItem>) : RecyclerView.Adapter<MenuAdapter.SymbolHolder>() {
     private val inflater: LayoutInflater
@@ -72,7 +74,19 @@ class MenuAdapter (context: Context?, val data: MutableList<SkbFunItem>) : Recyc
         val item = data[position]
         holder.entranceNameTextView?.text = item.funName
         holder.entranceIconImageView?.setImageResource(item.funImgResource)
-        val color = if (isSettingsMenuSelect(item)) mTheme.accentKeyBackgroundColor else mTheme.keyTextColor
+        val selected = isSettingsMenuSelect(item)
+        holder.itemView.isSelected = selected
+        val color = ThemeControls.foreground(mTheme, selected)
+        val backing = selected || mTheme is Theme.Custom && (mTheme as Theme.Custom).backgroundImage != null
+        holder.entranceIconImageView?.apply {
+            layoutParams = layoutParams.apply { width = context.dp(48); height = context.dp(48) }
+            setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
+            background = if (backing) ThemeControls.background(mTheme, selected, 0f, oval = true) else null
+        }
+        holder.entranceNameTextView?.apply {
+            setPadding(context.dp(6), context.dp(3), context.dp(6), context.dp(3))
+            background = if (backing) ThemeControls.background(mTheme, selected, context.dp(6f)) else null
+        }
         holder.entranceNameTextView?.setTextColor(color)
         holder.entranceIconImageView?.getDrawable()?.setTint(color)
         if (dragOverListener != null) {
@@ -84,24 +98,28 @@ class MenuAdapter (context: Context?, val data: MutableList<SkbFunItem>) : Recyc
                 holder.entranceOption?.setImageResource(R.drawable.ic_menu_plus)
             }
             holder.entranceIconImageView?.setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_DOWN) {
+                if (event.action == MotionEvent.ACTION_DOWN && holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {
                     dragOverListener?.startDragItem(holder)
                 }
-                return@setOnTouchListener false
+                return@setOnTouchListener true
             }
             holder.entranceOption?.getDrawable()?.setTint(color)
             holder.entranceOption?.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
-                    dragOverListener?.onOptionClick(this, item, position)
+                    val current = holder.bindingAdapterPosition
+                    data.getOrNull(current)?.let { dragOverListener?.onOptionClick(this, it, current) }
                 }
-                return@setOnTouchListener false
+                return@setOnTouchListener true
             }
             holder.itemView.setOnClickListener(null)
         } else {
+            holder.entranceIconImageView?.setOnTouchListener(null)
+            holder.entranceOption?.setOnTouchListener(null)
             holder.entranceOption?.visibility = View.GONE
             if (mOnItemClickListener != null) {
                 holder.itemView.setOnClickListener { v: View? ->
-                    mOnItemClickListener!!.onItemClick(this, v, position)
+                    val current = holder.bindingAdapterPosition
+                    if (current in data.indices) mOnItemClickListener?.onItemClick(this, v, current)
                 }
             }
         }
@@ -111,7 +129,7 @@ class MenuAdapter (context: Context?, val data: MutableList<SkbFunItem>) : Recyc
         val rimeValue = AppPrefs.getInstance().internal.pinyinModeRime.getValue()
         val result: Boolean = when (data.skbMenuMode) {
             // Setting Menu
-            SkbMenuMode.DarkTheme -> ThemeManager.activeTheme.isDark
+            SkbMenuMode.DarkTheme -> ThemeManager.isNightMode
             SkbMenuMode.JianFan -> AppPrefs.getInstance().input.chineseFanTi.getValue()
             SkbMenuMode.LockEnglish -> AppPrefs.getInstance().keyboardSetting.keyboardLockEnglish.getValue()
             SkbMenuMode.SymbolShow -> ThemeManager.prefs.keyboardSymbol.getValue()

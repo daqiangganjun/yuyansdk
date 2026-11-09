@@ -73,9 +73,8 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
 
     fun initialize(cvListener: CandidateViewListener) {
         mCvListener = cvListener
-        // 本视图高度由内容撑开，内容上下并无留白；而键盘区首行按键上方有 keyYMargin
-        // 的空隙，导致顶栏看起来偏上。补一个等值的顶部内边距使上下视觉对称。
-        setPadding(0, instance.keyYMargin, 0, 0)
+        // 工具栏高度独立于按键区，动态按键间距不能挤占工具栏的可用高度。
+        setPadding(0, 0, 0, 0)
         initMenuView()
         initCandidateView()
         if (handwritingStatus.parent == null) addView(handwritingStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -318,6 +317,13 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
         super.onMeasure(widthMeasure, heightMeasure)
     }
 
+    fun refreshDimensions() {
+        setPadding(0, 0, 0, 0)
+        initMenuView()
+        initCandidateView()
+        requestLayout()
+    }
+
     private fun showViewVisibility(candidatesContainer: View) {
         mCandidatesMenuContainer.visibility = if (candidatesContainer === mCandidatesMenuContainer) VISIBLE else GONE
         mCandidatesDataContainer.visibility = if (candidatesContainer === mCandidatesDataContainer) VISIBLE else GONE
@@ -333,6 +339,14 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
         mRightArrowBtn.drawable.setTint(textColor)
         mMenuRightArrowBtn.drawable.setTint(textColor)
         mIvMenuSetting.drawable.setTint(textColor)
+        val theme = com.yuyan.imemodule.data.theme.ThemeManager.activeTheme
+        val photo = theme is com.yuyan.imemodule.data.theme.Theme.Custom && theme.backgroundImage != null
+        listOf(mIvMenuSetting, mMenuRightArrowBtn, mRightArrowBtn).forEach { button ->
+            button.background = if (photo) com.yuyan.imemodule.data.theme.ThemeControls.background(theme, false, 0f, oval = true) else null
+            val padding = if (photo) dp(5) else 0
+            button.setPadding(padding, padding, padding, padding)
+            button.drawable.setTint(if (photo) com.yuyan.imemodule.data.theme.ThemeControls.foreground(theme, false) else textColor)
+        }
         mCandidatesAdapter.notifyChanged()
         mCandidatesMenuAdapter.notifyChanged()
     }

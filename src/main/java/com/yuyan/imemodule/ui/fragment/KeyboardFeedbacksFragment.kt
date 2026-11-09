@@ -31,17 +31,16 @@ class KeyboardFeedbacksFragment : Fragment() {
             setPadding(dp(12), dp(16), dp(12), dp(16))
         }
         val prefs = AppPrefs.getInstance().internal
-        content.addView(feedbackCard(R.string.button_sound_volume, prefs.soundOnKeyPress, 40, 10,
-            { it < 5 || it > 10 }, { value ->
-                when {
-                    value < 5 -> "跟随系统"
-                    value <= 10 -> "已关闭"
-                    else -> "音量 ${((value - 10) * 100f / 30).roundToInt()}%"
-                }
+        content.addView(feedbackCard(R.string.button_sound_volume, prefs.soundOnKeyPress,
+            prefs.soundEnabled, prefs.isSoundEnabled, 30,
+            { (it - 10).coerceIn(0, 30) }, { if (it == 0) 0 else it + 10 }, { value ->
+                if (value == 0) "跟随系统" else "音量 ${(value * 100f / 30).roundToInt()}%"
             }) { DevicesUtils.tryPlayKeyDown() })
         val vibrationLabels = resources.getStringArray(R.array.vibrate_labels)
-        content.addView(feedbackCard(R.string.button_vibration_amplitude, prefs.vibrationAmplitude, 4, 1,
-            { it != 1 }, { vibrationLabels[it.coerceIn(vibrationLabels.indices)] }) { DevicesUtils.tryVibrate(it) })
+        content.addView(feedbackCard(R.string.button_vibration_amplitude, prefs.vibrationAmplitude,
+            prefs.vibrationEnabled, prefs.isVibrationEnabled, 3,
+            { (it - 1).coerceIn(0, 3) }, { if (it == 0) 0 else it + 1 },
+            { vibrationLabels[it.coerceIn(vibrationLabels.indices)] }) { DevicesUtils.tryVibrate(it) })
         return NestedScrollView(context).apply {
             clipToPadding = false
             addView(content)
@@ -55,19 +54,21 @@ class KeyboardFeedbacksFragment : Fragment() {
     private fun feedbackCard(
         title: Int,
         preference: ManagedPreference.PInt,
+        enabledPreference: ManagedPreference.PBool,
+        initiallyEnabled: Boolean,
         maximum: Int,
-        disabledValue: Int,
-        enabled: (Int) -> Boolean,
+        fromStored: (Int) -> Int,
+        toStored: (Int) -> Int,
         label: (Int) -> String,
         preview: (View) -> Unit,
     ): View {
         val context = requireContext()
-        val initial = preference.getValue().coerceIn(0, maximum)
+        val initial = fromStored(preference.getValue())
         val toggle = MaterialSwitch(context).apply {
             setText(title)
             textSize = 16f
             minHeight = dp(48)
-            isChecked = enabled(initial)
+            isChecked = initiallyEnabled
         }
         val valueLabel = TextView(context).apply {
             textSize = 14f
@@ -79,28 +80,29 @@ class KeyboardFeedbacksFragment : Fragment() {
             valueTo = maximum.toFloat()
             stepSize = 1f
             value = initial.toFloat()
-            isEnabled = enabled(initial)
+            isEnabled = initiallyEnabled
             contentDescription = getString(title)
             setLabelFormatter { label(it.roundToInt()) }
         }
-        var updating = false
         var trackingTouch = false
+        fun refreshEnabled(checked: Boolean) {
+            slider.isEnabled = checked
+            valueLabel.isEnabled = checked
+            valueLabel.alpha = if (checked) 1f else 0.38f
+        }
         fun save(value: Int) {
-            preference.setValue(value)
-            updating = true
-            toggle.isChecked = enabled(value)
-            slider.isEnabled = enabled(value)
-            updating = false
-            if (enabled(value)) preview(slider)
+            if (!toggle.isChecked) return
+            preference.setValue(toStored(value))
+            enabledPreference.setValue(true)
+            preview(slider)
         }
         toggle.setOnCheckedChangeListener { _, checked ->
-            if (!updating) {
-                val value = if (checked) 0 else disabledValue
-                slider.value = value.toFloat()
-                slider.isEnabled = checked
-                preference.setValue(value)
-            }
+            preference.setValue(toStored(slider.value.roundToInt()))
+            enabledPreference.setValue(checked)
+            refreshEnabled(checked)
+            if (checked) preview(slider)
         }
+        refreshEnabled(initiallyEnabled)
         slider.addOnChangeListener { view, value, fromUser ->
             valueLabel.text = label(value.roundToInt())
             if (fromUser && !trackingTouch) save(value.roundToInt())

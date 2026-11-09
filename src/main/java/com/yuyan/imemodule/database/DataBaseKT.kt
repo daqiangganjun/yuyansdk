@@ -109,11 +109,13 @@ abstract class DataBaseKT : RoomDatabase() {
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
+                    com.yuyan.imemodule.data.transfer.DataChangeTracker.install(db)
                     initScope.launch { initDb() }
                 }
 
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
+                    com.yuyan.imemodule.data.transfer.DataChangeTracker.install(db)
                     initScope.launch { initPhrasesDb() }
                 }
             })
@@ -138,9 +140,12 @@ abstract class DataBaseKT : RoomDatabase() {
                 SideSymbol(symbolKey, symbolKey, "number")
             }
             instance.sideSymbolDao().insertAll(symbolNumber)
+            instance.openHelper.writableDatabase.execSQL("UPDATE selfopt_changes SET changed=0 WHERE item LIKE 'row/side_symbol/%'")
         }
 
         private fun initPhrasesDb() {  //初始化常用语数据数据
+            val database = instance.openHelper.writableDatabase
+            if (database.query("SELECT 1 FROM selfopt_changes WHERE item='_seed/phrases'").use { it.moveToFirst() }) return
             if(instance.phraseDao().getAll().isEmpty()) {
                 val phrases = listOf(
                     Phrase(content = "我的电话是__，常联系。", t9 = "9334", qwerty = "wddh", lx17 = "wddh"),
@@ -150,6 +155,7 @@ abstract class DataBaseKT : RoomDatabase() {
                     Phrase(content = "麻烦放驿站，谢谢。", t9 = "6339", qwerty = "mffy", lx17 = "mffy"),
                 )
                 instance.phraseDao().insertAll(phrases)
+                database.execSQL("UPDATE selfopt_changes SET changed=0 WHERE item LIKE 'row/phrase/%'")
             }
             if(instance.skbFunDao().getAllMenu().isEmpty()) {
                 val skbFuns = listOf(
@@ -176,9 +182,11 @@ abstract class DataBaseKT : RoomDatabase() {
                     SkbFun(name = SkbMenuMode.TerminalMode.name, isKeep = 0, position = 16),
                 )
                 instance.skbFunDao().insertAll(skbFuns)
+                database.execSQL("UPDATE selfopt_changes SET changed=0 WHERE item LIKE 'row/skbfun/%'")
                 // 默认菜单写入前若已有读取，缓存中会是空结果，此处使其失效
                 SkbMenuCache.invalidate()
             }
+            database.execSQL("INSERT OR REPLACE INTO selfopt_changes(item, changed) VALUES('_seed/phrases', 1)")
         }
     }
 }

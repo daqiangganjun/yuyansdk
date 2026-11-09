@@ -4,6 +4,16 @@
     app:startDestination="@id/settingsFragment">
 
     <fragment
+        android:id="@+id/transferSettingsFragment"
+        android:name="com.yuyan.imemodule.ui.fragment.TransferSettingsFragment"
+        android:label="词库" />
+
+    <fragment
+        android:id="@+id/cloudSyncSettingsFragment"
+        android:name="com.yuyan.imemodule.ui.fragment.CloudSyncSettingsFragment"
+        android:label="云同步" />
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.yuyan.imemodule.ui.fragment.ImeSettingsFragment"
         android:label="@string/input_methods">

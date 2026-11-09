@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <queries>
         <intent>
@@ -15,6 +17,8 @@
     </queries>
     <application
         android:supportsRtl="true">
+        <service android:name="com.yuyan.inputmethod.dictionary.DictionaryBuildService"
+            android:exported="false" android:process=":dictbuild" android:foregroundServiceType="dataSync" />
         <activity
             android:name=".ui.activity.SettingsActivity"
             android:exported="true">

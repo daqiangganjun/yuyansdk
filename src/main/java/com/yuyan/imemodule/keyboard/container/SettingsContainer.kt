@@ -36,6 +36,8 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
     private var mRVMenuLayout: RecyclerView? = null
     private var mTheme: Theme? = null
     private var adapter:MenuAdapter? = null
+    private var dragHelper: ItemTouchHelper? = null
+    private var orderChanged = false
     var isKeyboardSelectionVisible = false
         private set
     val funItems: MutableList<SkbFunItem> = LinkedList()   //键盘菜单对象
@@ -48,7 +50,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
         mRVMenuLayout = RecyclerView(context)
         mRVMenuLayout!!.setHasFixedSize(true)
         mRVMenuLayout!!.setItemAnimator(null)
-        val count = EnvironmentSingleton.instance.skbWidth/dp(100)
+        val count = (EnvironmentSingleton.instance.skbWidth/dp(100)).coerceAtLeast(1)
         val layoutManager = CustomGridLayoutManager(context, count)
         mRVMenuLayout!!.setLayoutManager(layoutManager)
         val layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -60,6 +62,8 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
      * 弹出键盘设置界面
      */
     fun showSettingsView() {
+        stopDragging()
+        mRVMenuLayout?.adapter = null
         isKeyboardSelectionVisible = false
         funItems.clear()
         for(item in DataBaseKT.instance.skbFunDao().getAllMenu()){
@@ -68,12 +72,13 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
         }
         adapter = MenuAdapter(context, funItems)
         adapter?.setOnItemClickLitener { _: RecyclerView.Adapter<*>?, _: View?, position: Int ->
-            inputView.onSettingsMenuClick(funItems[position].skbMenuMode)
+            funItems.getOrNull(position)?.let { inputView.onSettingsMenuClick(it.skbMenuMode) }
         }
         mRVMenuLayout!!.setAdapter(adapter)
     }
 
     fun enableDragItem(enable: Boolean) {
+        stopDragging()
         if (enable) {
             val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.Callback() {
                 override fun getMovementFlags(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
@@ -83,6 +88,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                     //使用集合工具类Collections，分别把中间所有的item的位置重新交换
                     val fromPosition: Int = oldHolder.bindingAdapterPosition //得到拖动ViewHolder的position
                     val toPosition: Int = targetHolder.bindingAdapterPosition //得到目标ViewHolder的position
+                    if (fromPosition !in funItems.indices || toPosition !in funItems.indices || oldHolder.bindingAdapter !== adapter || targetHolder.bindingAdapter !== adapter) return false
                     if (fromPosition < toPosition) {
                         for (i in fromPosition until toPosition) {
                             Collections.swap(funItems, i, i + 1)
@@ -93,13 +99,14 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                         }
                     }
                     adapter?.notifyItemMoved(fromPosition, toPosition)
+                    orderChanged = true
                     // 拖动过程中该回调会连续触发，落库推迟到 clearView（拖拽结束）执行一次
                     return true
                 }
 
                 override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
                     super.clearView(recyclerView, viewHolder)
-                    persistMenuOrder()
+                    if (orderChanged) { persistMenuOrder(); orderChanged = false }
                 }
 
                 override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
@@ -126,6 +133,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                 }
             }
             itemTouchHelper.attachToRecyclerView(mRVMenuLayout)
+            dragHelper = itemTouchHelper
         } else {
             adapter?.dragOverListener = null
         }
@@ -143,12 +151,26 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
         DataBaseKT.instance.runInTransaction {
             ordered.forEach { dao.update(it) }
         }
+        SkbMenuCache.invalidate()
+    }
+
+    private fun stopDragging() {
+        dragHelper?.attachToRecyclerView(null)
+        dragHelper = null
+        adapter?.dragOverListener = null
+        if (orderChanged) { persistMenuOrder(); orderChanged = false }
+    }
+
+    override fun onDetachedFromWindow() {
+        stopDragging()
+        super.onDetachedFromWindow()
     }
 
     /**
      * 弹出键盘界面
      */
     fun showSkbSelelctModeView() {
+        stopDragging()
         isKeyboardSelectionVisible = true
         val funItems: MutableList<SkbFunItem> = LinkedList()
         funItems.add(
@@ -204,7 +226,7 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
         )
         val adapter = MenuAdapter(context, funItems)
         adapter.setOnItemClickLitener { _: RecyclerView.Adapter<*>?, _: View?, position: Int ->
-            onKeyboardMenuClick(funItems[position])
+            funItems.getOrNull(position)?.let(::onKeyboardMenuClick)
         }
         mRVMenuLayout!!.setAdapter(adapter)
     }

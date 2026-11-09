@@ -2,7 +2,6 @@ package com.yuyan.imemodule.view
 
 import android.content.Context
 import android.graphics.Typeface
-import android.graphics.drawable.StateListDrawable
 import android.text.Editable
 import android.text.InputType
 import android.text.SpannableString
@@ -20,11 +19,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputConnection
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
-import androidx.core.graphics.ColorUtils
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.data.flower.FlowerTypefaceMode
@@ -37,6 +34,7 @@ import com.yuyan.imemodule.keyboard.transform.TextTransformers
 import com.yuyan.imemodule.keyboard.transform.TextTransformSession
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.prefs.AppPrefs
+import com.yuyan.imemodule.prefs.behavior.SkbStyleMode
 import com.yuyan.imemodule.service.ImeService
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.StringUtils
@@ -54,21 +52,19 @@ class KeyboardAuxiliaryPanel(
     private val onModeChanged: () -> Unit,
     private val onExitTerminal: () -> Unit,
 ) : LinearLayout(context) {
-    val terminalKeys = LinearLayout(context).apply { orientation = VERTICAL }
+    val terminalKeys = object : LinearLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            syncTerminalKeySize(this)
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+    }.apply { orientation = VERTICAL }
     private var appliedTheme: Theme? = null
-    private val inputStrip = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-    private val source = ImeSourceEditText(context).apply {
+    private val inputStrip = ImeInlineEditor(context, "清空原文") { beforeAction() }
+    private val source = inputStrip.source.apply {
         hint = "输入原文"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        showSoftInputOnFocus = false
-        isFocusable = true
-        isFocusableInTouchMode = true
         minLines = 1
         maxLines = 3
-        includeFontPadding = false
-        gravity = Gravity.CENTER_VERTICAL or Gravity.START
-        textSize = 16f
-        setPadding(dp(8), dp(4), dp(4), dp(4))
         contentDescription = "花漾字原文"
         tag = "flower_source"
     }
@@ -86,13 +82,6 @@ class KeyboardAuxiliaryPanel(
     }
     private val providerButton = key("花漾字") { showProviders(it) }.apply { tag = "flower_provider" }
     private val actionButton = key("取消") { completeFlowerInput() }.apply { tag = "flower_action" }
-    private val clearButton = ImageView(context).apply {
-        setImageResource(R.drawable.ic_panel_close)
-        contentDescription = "清空原文"
-        isFocusable = false
-        setPadding(dp(8), dp(8), dp(8), dp(8))
-        setOnClickListener { beforeAction(); source.editableText.clear(); source.requestFocus() }
-    }
     private val modifierButtons = mutableMapOf<Int, TextView>()
     private val functionKeyButton = key("F(n)") { toggleFunctionKeyInput() }.apply {
         tag = "terminal_function_key"
@@ -101,7 +90,8 @@ class KeyboardAuxiliaryPanel(
     private var keyboardBeforeFunctionKey: KeyboardManager.KeyboardType? = null
     private var functionKeyDigits = ""
     val isChoosingFunctionKey get() = keyboardBeforeFunctionKey != null
-    private val moreRows = LinearLayout(context).apply { orientation = VERTICAL; visibility = GONE }
+    private val panelPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+    private val moreRows = LinearLayout(context).apply { orientation = VERTICAL; visibility = if (panelPrefs.getBoolean("terminal_functions_expanded", false)) VISIBLE else GONE }
     private var session: TextTransformSession? = null
     private var previewOnly = false
     private var observedHostComposition = false
@@ -129,28 +119,27 @@ class KeyboardAuxiliaryPanel(
         actionButton.includeFontPadding = false
         providerButton.setPadding(dp(6), 0, dp(6), 0)
         editorRow.addView(providerButton, LayoutParams(dp(82), -1).apply { marginEnd = dp(6) })
-        inputStrip.addView(source, LayoutParams(0, -2, 1f))
-        inputStrip.addView(clearButton, LayoutParams(dp(32), -1))
         editorRow.addView(inputStrip, LayoutParams(0, -2, 1f))
         editorRow.addView(actionButton, LayoutParams(dp(52), -1).apply { marginStart = dp(6) })
         addView(editorRow, LayoutParams(-1, -2))
         addView(preview, LayoutParams(-1, -2))
         val first = row(terminalKeys)
-        addKey(first, "TAB", KeyEvent.KEYCODE_TAB)
         addKey(first, "ESC", KeyEvent.KEYCODE_ESCAPE)
+        addKey(first, "TAB", KeyEvent.KEYCODE_TAB)
         addModifier(first, "CTRL", KeyEvent.KEYCODE_CTRL_LEFT)
         addModifier(first, "ALT", KeyEvent.KEYCODE_ALT_LEFT)
         addKey(first, "PGUP", KeyEvent.KEYCODE_PAGE_UP)
         addKey(first, "PGDN", KeyEvent.KEYCODE_PAGE_DOWN)
-        first.addView(key("更多") { showMore(it) }, cell())
+        first.addView(key(if (moreRows.visibility == VISIBLE) "收起" else "更多") { showMore(it) }.apply { isSelected = moreRows.visibility == VISIBLE }, cell())
         terminalKeys.addView(moreRows, LayoutParams(-1, -2))
         val functions = row(moreRows)
         addModifier(functions, "SHIFT", KeyEvent.KEYCODE_SHIFT_LEFT)
         addKey(functions, "DEL", KeyEvent.KEYCODE_FORWARD_DEL, true)
         functions.addView(functionKeyButton, cell())
-        listOf("^C" to KeyEvent.KEYCODE_C, "^D" to KeyEvent.KEYCODE_D, "^Z" to KeyEvent.KEYCODE_Z, "^L" to KeyEvent.KEYCODE_L).forEach { (label, code) ->
+        listOf("^Z" to KeyEvent.KEYCODE_Z, "^C" to KeyEvent.KEYCODE_C, "^L" to KeyEvent.KEYCODE_L).forEach { (label, code) ->
             functions.addView(key(label) { cancelFunctionKeyInput(); beforeAction(); dispatcher.sendKey(code, KeyEvent.META_CTRL_ON) }, cell())
         }
+        functions.addView(key("退出") { onExitTerminal() }, cell())
         source.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -297,7 +286,6 @@ class KeyboardAuxiliaryPanel(
         val finalText = if (isEditing && !previewOnly && source.editableText.isNotEmpty()) StringUtils.converted2FlowerTypeface(source.editableText.toString()) else null
         closeDraft(commit = !previewOnly, finalText = finalText)
         dispatcher.modifiers.clear()
-        moreRows.visibility = GONE
         internalPopupCount = 0
         refresh()
     }
@@ -327,7 +315,6 @@ class KeyboardAuxiliaryPanel(
             onModeChanged()
         }
         actionButton.isSelected = hasDraft
-        clearButton.visibility = if (source.editableText.isNotEmpty()) VISIBLE else INVISIBLE
     }
 
     fun refresh() {
@@ -369,19 +356,7 @@ class KeyboardAuxiliaryPanel(
         appliedTheme = theme
         setBackgroundColor(theme.barColor)
         terminalKeys.setBackgroundColor(theme.barColor)
-        inputStrip.background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_activated), KeyboardUiStyle.rounded(theme.keyBackgroundColor, dp(10f)).apply {
-                setStroke(dp(1), ColorUtils.setAlphaComponent(theme.keyTextColor, 100))
-            })
-            addState(intArrayOf(), KeyboardUiStyle.rounded(theme.keyBackgroundColor, dp(10f)).apply {
-                setStroke(dp(1), ColorUtils.setAlphaComponent(theme.keyTextColor, 32))
-            })
-        }
-        source.background = null
-        source.setTextColor(theme.keyTextColor)
-        source.setHintTextColor(KeyboardUiStyle.secondaryText(theme))
-        clearButton.drawable?.setTint(KeyboardUiStyle.secondaryText(theme))
-        clearButton.background = KeyboardUiStyle.buttonBackground(theme, dp(10f), android.graphics.Color.TRANSPARENT)
+        inputStrip.applyTheme(theme)
         providerButton.setTextColor(theme.keyTextColor)
         val indicator = context.getDrawable(R.drawable.ic_menu_arrow_down)?.mutate()?.apply {
             setBounds(0, 0, dp(12), dp(12))
@@ -434,27 +409,35 @@ class KeyboardAuxiliaryPanel(
     }
 
     private fun showMore(anchor: View) {
-        val popup = PopupMenu(context, anchor).apply {
-            listOf("功能键", "清除修饰键", "退出终端模式").forEachIndexed { index, title -> menu.add(0, index, index, title) }
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    0 -> {
-                        cancelFunctionKeyInput()
-                        moreRows.visibility = if (moreRows.visibility == VISIBLE) GONE else VISIBLE
-                    }
-                    1 -> dispatcher.modifiers.clear()
-                    2 -> onExitTerminal()
-                }
-                true
-            }
-        }
-        onPopupVisibilityChanged(true)
-        popup.setOnDismissListener { onPopupVisibilityChanged(false) }
-        popup.show()
+        cancelFunctionKeyInput()
+        val expanded = moreRows.visibility != VISIBLE
+        moreRows.visibility = if (expanded) VISIBLE else GONE
+        panelPrefs.edit().putBoolean("terminal_functions_expanded", expanded).apply()
+        (anchor as? TextView)?.text = if (expanded) "收起" else "更多"
+        anchor.isSelected = expanded
     }
-
     private fun row(parent: LinearLayout) = LinearLayout(context).also { parent.addView(it, LayoutParams(-1, -2)) }
     private fun cell() = LayoutParams(0, dp(40), 1f).apply { setMargins(dp(2), dp(2), dp(2), dp(2)) }
+
+    /** 终端按键的行高与间距取自普通按键：每行占键盘区高度的四分之一，上下左右留白与普通按键一致。 */
+    private fun syncTerminalKeySize(group: ViewGroup) {
+        val env = EnvironmentSingleton.instance
+        val marginY = (if (ThemeManager.prefs.skbStyleMode.getValue() == SkbStyleMode.Google && InputModeSwitcher.isQwert)
+            env.keyYMargin * 1.5f else env.keyYMargin.toFloat()).toInt()
+        val marginX = env.keyXMargin
+        val height = (env.skbHeight / 4 - 2 * marginY).coerceAtLeast(dp(24))
+        fun sync(parent: ViewGroup) {
+            repeat(parent.childCount) {
+                val child = parent.getChildAt(it)
+                if (child is ViewGroup) sync(child)
+                else (child.layoutParams as? LayoutParams)?.let { params ->
+                    params.height = height
+                    params.setMargins(marginX, marginY, marginX, marginY)
+                }
+            }
+        }
+        sync(group)
+    }
     private fun key(label: String, action: (View) -> Unit) = TextView(context).apply {
         text = label
         contentDescription = label

@@ -21,20 +21,31 @@ class VoiceInputController(
     private val root: RelativeLayout,
     private val prepareInput: () -> Unit,
     private val commitResult: (String) -> Unit,
+    private val anchor: android.view.View = root,
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val stopRecording = AtomicBoolean(true)
+    private val muted = AtomicBoolean(false)
     private var generation = 0
     private var session: SpeechSession? = null
+    private var uplink: AudioUplink? = null
     private var overlay: VoiceInputPanel? = null
     private var finishing = false
+    private var finalResultReceived = false
+    private var inputTarget: android.view.inputmethod.InputConnection? = null
     private var latestResult = ""
+    private var coverBottomInWindow = -1
     private var worker: Thread? = null
     private val connectionTimeout = Runnable { fail(SpeechFailure(SpeechFailureKind.TIMEOUT)) }
     private val finalTimeout = Runnable { fail(SpeechFailure(SpeechFailureKind.TIMEOUT)) }
     private val recordingLimit = Runnable { finish() }
 
-    fun start() {
+    /**
+     * 按下即开始录音，不等待连接：连接建立前的音频暂存在 [AudioUplink]，就绪后按顺序连续补发。
+     *
+     * @param coverBottom 面板下边界在窗口中的纵坐标（通常为空格键所在行的顶部），小于 0 时覆盖整个键盘
+     */
+    fun start(coverBottom: Int = -1) {
         cancel()
         if (worker?.isAlive == true) {
             message("录音尚未结束，请稍后重试")
@@ -56,18 +67,17 @@ class VoiceInputController(
         }
         prepareInput()
         val target = service.activeInputConnection ?: return
+        inputTarget = target
+        coverBottomInWindow = coverBottom
         val token = ++generation
         stopRecording.set(false)
+        muted.set(false)
         finishing = false
         showOverlay()
-        overlay?.connecting(provider.displayName)
         val listener = object : SpeechListener {
             override fun onReady() = dispatch(token) {
                 main.removeCallbacks(connectionTimeout)
-                if (finishing) session?.finish() else {
-                    startRecording(provider.sampleRate, token)
-                    main.postDelayed(recordingLimit, 60_000)
-                }
+                if (uplink?.markReady() == false) fail(SpeechFailure(SpeechFailureKind.NETWORK))
             }
 
             override fun onResult(result: SpeechResult) = dispatch(token) {
@@ -76,20 +86,22 @@ class VoiceInputController(
                     overlay?.showResult(result.text)
                 }
                 if (result.isFinal) {
-                    val stillCurrent = service.activeInputConnection === target
-                    val text = latestResult
-                    cancel()
-                    if (stillCurrent && text.isNotBlank()) commitResult(text)
-                    else if (stillCurrent) message("未识别到语音，请重试")
+                    finalResultReceived = true
+                    stopRecording.set(true)
+                    if (finishing) commitRecognition()
                 }
             }
 
             override fun onFailure(failure: SpeechFailure) = dispatch(token) { fail(failure) }
         }
         try {
-            session = provider.createSession(key, options, listener)
+            val created = provider.createSession(key, options, listener)
+            session = created
+            uplink = AudioUplink(created, provider.sampleRate * 2 * MAX_PENDING_SECONDS)
             main.postDelayed(connectionTimeout, 15_000)
-            session?.start()
+            main.postDelayed(recordingLimit, 60_000)
+            startRecording(provider.sampleRate, token)
+            created.start()
         } catch (_: Exception) {
             fail(SpeechFailure(SpeechFailureKind.NETWORK))
         }
@@ -100,28 +112,44 @@ class VoiceInputController(
         finishing = true
         stopRecording.set(true)
         main.removeCallbacks(recordingLimit)
+        if (finalResultReceived) {
+            commitRecognition()
+            return
+        }
         overlay?.recognizing()
-        if (worker?.isAlive != true) session?.finish()
+        if (worker?.isAlive != true) uplink?.finish()
         main.postDelayed(finalTimeout, 15_000)
+    }
+
+    /** 上滑进入「松开取消」时暂停识别：录音不停，改为发送静音保持会话，已识别内容保留以便恢复。 */
+    fun setCancelArmed(armed: Boolean) {
+        if (session == null) return
+        muted.set(armed)
+        overlay?.cancelArmed(armed)
     }
 
     fun cancel() {
         generation++
         stopRecording.set(true)
+        muted.set(false)
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(finalTimeout)
         main.removeCallbacks(recordingLimit)
         session?.cancel()
         session = null
+        uplink = null
         finishing = false
+        finalResultReceived = false
+        inputTarget = null
         latestResult = ""
+        coverBottomInWindow = -1
         overlay?.let { root.removeView(it) }
         overlay = null
     }
 
     @SuppressLint("MissingPermission")
     private fun startRecording(sampleRate: Int, token: Int) {
-        val activeSession = session ?: return
+        val activeUplink = uplink ?: return
         worker = Thread({
             var recorder: AudioRecord? = null
             try {
@@ -132,12 +160,6 @@ class VoiceInputController(
                 check(recorder.state == AudioRecord.STATE_INITIALIZED) { "Cannot initialize audio recorder" }
                 recorder.startRecording()
                 check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Cannot start audio recorder" }
-                dispatch(token) {
-                    if (!finishing) {
-                        overlay?.listening()
-                        if (latestResult.isNotEmpty()) overlay?.showResult(latestResult)
-                    }
-                }
                 val buffer = ByteArray(sampleRate * 2 / 5)
                 var offset = 0
                 while (!stopRecording.get()) {
@@ -145,12 +167,14 @@ class VoiceInputController(
                     check(count > 0 && count % 2 == 0) { "Audio recording failed" }
                     offset += count
                     if (offset == buffer.size) {
-                        if (!activeSession.sendAudio(buffer.copyOf())) break
+                        if (!activeUplink.send(frame(buffer, offset))) break
                         offset = 0
                     }
                 }
-                if (offset > 0) activeSession.sendAudio(buffer.copyOf(offset))
-                activeSession.finish()
+                if (token == generation && finishing && !finalResultReceived) {
+                    if (offset > 0) activeUplink.send(frame(buffer, offset))
+                    activeUplink.finish()
+                }
             } catch (_: Exception) {
                 dispatch(token) { fail(SpeechFailure(SpeechFailureKind.AUDIO)) }
             } finally {
@@ -159,6 +183,8 @@ class VoiceInputController(
             }
         }, "ime-speech-recorder").apply { start() }
     }
+
+    private fun frame(buffer: ByteArray, length: Int) = if (muted.get()) ByteArray(length) else buffer.copyOf(length)
 
     private fun dispatch(token: Int, action: () -> Unit) {
         main.post { if (token == generation && session != null) action() }
@@ -177,15 +203,72 @@ class VoiceInputController(
         message(text + (failure.code?.let { "（$it）" } ?: ""))
     }
 
+    /** 面板从键盘内容顶部开始，下边界止于 [coverBottomInWindow]（空格行之上），让空格行保持可见。 */
     private fun showOverlay() {
-        val panel = VoiceInputPanel(service) { cancel() }
-        root.addView(panel, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT)
+        val panel = VoiceInputPanel(service, onCancelArmed = ::setCancelArmed, onCancel = ::cancel)
+        panel.elevation = service.dp(12f)
+        val margin = service.dp(6)
+        val rootTop = IntArray(2).also(root::getLocationInWindow)[1]
+        val anchorTop = IntArray(2).also(anchor::getLocationInWindow)[1] - rootTop
+        val top = anchorTop + anchor.paddingTop + margin
+        val fullBottom = anchorTop + anchor.height - anchor.paddingBottom - margin
+        val bottom = if (coverBottomInWindow > 0) minOf(coverBottomInWindow - rootTop - margin, fullBottom) else fullBottom
+        val width = (anchor.width - anchor.paddingLeft - anchor.paddingRight - service.dp(16)).coerceAtLeast(1)
+        val height = (bottom - top).coerceAtLeast(service.dp(96))
+        root.addView(panel, RelativeLayout.LayoutParams(width, height)
             .apply {
-                addRule(RelativeLayout.ALIGN_PARENT_TOP)
-                setMargins(service.dp(8), service.dp(6), service.dp(8), service.dp(6))
+                addRule(RelativeLayout.ALIGN_TOP, anchor.id)
+                addRule(RelativeLayout.ALIGN_START, anchor.id)
+                setMargins(anchor.paddingLeft + service.dp(8), anchor.paddingTop + margin, service.dp(8), margin)
             })
         overlay = panel
     }
 
+    private fun commitRecognition() {
+        val stillCurrent = service.activeInputConnection === inputTarget
+        val text = latestResult
+        cancel()
+        if (stillCurrent && text.isNotBlank()) commitResult(text)
+        else if (stillCurrent) message("未识别到语音，请重试")
+    }
+
     private fun message(text: String) = Toast.makeText(service, text, Toast.LENGTH_LONG).show()
+
+    /** 连接就绪前把录音按顺序暂存在本地，就绪后连续补发，此后直接实时发送；结束请求同样延后到补发之后。 */
+    private class AudioUplink(private val session: SpeechSession, private val maxPendingBytes: Int) {
+        private val pending = ArrayDeque<ByteArray>()
+        private var pendingBytes = 0
+        private var ready = false
+        private var finishRequested = false
+
+        @Synchronized
+        fun send(pcm: ByteArray): Boolean {
+            if (ready) return session.sendAudio(pcm)
+            if (pendingBytes + pcm.size > maxPendingBytes) return false
+            pending.addLast(pcm)
+            pendingBytes += pcm.size
+            return true
+        }
+
+        @Synchronized
+        fun markReady(): Boolean {
+            if (ready) return true
+            ready = true
+            while (pending.isNotEmpty()) if (!session.sendAudio(pending.removeFirst())) return false
+            pendingBytes = 0
+            if (finishRequested) session.finish()
+            return true
+        }
+
+        @Synchronized
+        fun finish() {
+            finishRequested = true
+            if (ready) session.finish()
+        }
+    }
+
+    private companion object {
+        /** 本地暂存上限略大于连接超时，正常情况下先触发超时提示而不是截断录音。 */
+        const val MAX_PENDING_SECONDS = 20
+    }
 }

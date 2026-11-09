@@ -90,10 +90,20 @@ sealed class Theme : Parcelable {
             val srcFilePath: String,
             val brightness: Int = 70,
             val cropRect: @Serializable(RectSerializer::class) Rect?,
+            val rotation: Int? = null,
+            val flipHorizontal: Boolean = false,
+            val flipVertical: Boolean = false,
         ) : Parcelable {
             fun toDrawable(): Drawable? {
-                val bitmap = ThemeBackgroundCache.get(croppedFilePath) ?: return null
-                return BitmapDrawable(Launcher.instance.context.resources, bitmap).apply {
+                val original = ThemeBackgroundCache.get(srcFilePath)
+                val bitmap = original ?: ThemeBackgroundCache.get(croppedFilePath) ?: return null
+                val size = if (original != null) ThemeBackgroundCache.dimensions(srcFilePath) else bitmap.width to bitmap.height
+                val orientation = if (original != null && rotation == null) ThemeBackgroundCache.orientation(srcFilePath)
+                    else ThemeBackgroundCache.Orientation(rotation ?: 0, flipHorizontal, flipVertical)
+                val x = if (original != null && size.first > 0) cropRect?.exactCenterX()?.div(size.first) ?: 0.5f else 0.5f
+                val y = if (original != null && size.second > 0) cropRect?.exactCenterY()?.div(size.second) ?: 0.5f else 0.5f
+                return FocalBackgroundDrawable(bitmap, x, y, if (original != null) orientation.rotation else 0,
+                    original != null && orientation.flipHorizontal, original != null && orientation.flipVertical).apply {
                     colorFilter = DarkenColorFilter(100 - brightness)
                 }
             }

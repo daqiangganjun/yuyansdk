@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import zipfile
 
 import yaml
@@ -70,7 +71,7 @@ def base_schema(schema_id, name, dictionary_name):
     }
 
 
-def prepare(root, generated):
+def prepare(root, generated, include_ice=False):
     output = generated / "dictionary"
     if not output.resolve().is_relative_to((NATIVE.parent / "build/generated/rime").resolve()):
         raise ValueError("Generated dictionary path is outside the build workspace")
@@ -93,8 +94,10 @@ def prepare(root, generated):
     lx_entries = re.findall(r'lx17PinyinMap\.put\("([A-Z]+)", "([a-z,]+)"\)', lx_source)
     lx_rules = [f"derive/^{syllable}$/{keys}/" for keys, syllables in lx_entries for syllable in syllables.split(",")]
     schemas = []
-    for family, repo, dict_name, label in (("frost", frost, "rime_frost", "白霜"),
-                                           ("ice", root / "rime-ice", "rime_ice", "雾凇")):
+    families = [("frost", frost, "rime_frost", "白霜")]
+    if include_ice:
+        families.append(("ice", root / "rime-ice", "rime_ice", "雾凇"))
+    for family, repo, dict_name, label in families:
         dictionary(repo, dict_name, output, family, dict_name)
         for logical in ("pinyin", "t9_pinyin", "double_pinyin_ls17", "double_pinyin_flypy",
                         "double_pinyin_natural", "double_pinyin_abc", "double_pinyin_mspy",
@@ -163,7 +166,7 @@ def prepare(root, generated):
                                          "menu": {"page_size": 100}, "punctuator": {"half_shape": {}, "full_shape": {}}})
     # 由真实基础词频生成预测表，限制单前缀候选数以控制手机初始化峰值内存。
     def words():
-        for repo in (frost, root / "rime-ice"):
+        for repo in (frost,):
             with (repo / "cn_dicts/base.dict.yaml").open(encoding="utf-8-sig") as stream:
                 for line in stream:
                     parts = line.rstrip().split("\t")
@@ -186,6 +189,8 @@ def prepare(root, generated):
             for word, weight in sorted(values.items(), key=lambda item: (-item[1], item[0])):
                 stream.write(f"{key}\t{word}\t{weight}\n")
     for repo in LOCK["repositories"]:
+        if repo["name"] == "rime-ice" and not include_ice:
+            continue
         source = root / repo["name"]
         for license_file in source.glob("LICENSE*"):
             target = output / "licenses" / repo["name"] / license_file.name
@@ -203,8 +208,16 @@ def prepare(root, generated):
     # Lua 的完整 MIT 声明位于头文件中，随源依赖一并保留。
     lua_header = root / "librime-lua-deps/lua5.4/lua.h"
     (output / "licenses/lua").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(lua_header, output / "licenses/lua/lua.h")
-    (output / "sources.json").write_text(json.dumps(LOCK, indent=2), encoding="utf-8")
+    if lua_header.exists():
+        shutil.copy2(lua_header, output / "licenses/lua/lua.h")
+    sources = copy.deepcopy(LOCK)
+    sources["repositories"] = [repo for repo in sources["repositories"]
+                               if include_ice or repo["name"] != "rime-ice"]
+    (output / "sources.json").write_text(json.dumps(sources, indent=2), encoding="utf-8")
+    revision = next(repo["revision"] for repo in LOCK["repositories"] if repo["name"] == "rime-frost")
+    updated_at = int(subprocess.check_output(["git", "-C", str(frost), "show", "-s", "--format=%ct", "HEAD"], text=True).strip()) * 1000
+    (output / "bundle.json").write_text(json.dumps({"format": 1, "compatibility": "selfopt-1", "family": "frost", "revision": revision,
+                                                  "updatedAt": updated_at}), encoding="utf-8")
     assets = generated / "assets"
     assets.mkdir(parents=True, exist_ok=True)
     archive_path = assets / "rime-selfopt.zip"
@@ -217,4 +230,10 @@ def prepare(root, generated):
     with archive_path.open("rb") as stream:
         revision = hashlib.file_digest(stream, "sha256").hexdigest()
     (assets / "rime-selfopt.version").write_text(revision, encoding="ascii")
+    (assets / "rime-selfopt.manifest.json").write_text(json.dumps({
+        "family": "frost", "revision": next(repo["revision"] for repo in LOCK["repositories"] if repo["name"] == "rime-frost"),
+        "sha256": revision, "size": archive_path.stat().st_size, "compatibility": "selfopt-1",
+        "updatedAt": updated_at,
+        "summary": "内置白霜词库", "url": ""
+    }, ensure_ascii=False), encoding="utf-8")
     print(f"Dictionary bundle generated: {archive_path.stat().st_size} bytes, {len(schemas)} schemas")

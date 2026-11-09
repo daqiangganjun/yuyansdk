@@ -44,8 +44,7 @@ fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
             KeyboardManager.instance.currentContainer!!.setKeyboardHeight()
         }
         SkbMenuMode.DarkTheme -> {
-            val theme = (if (ThemeManager.activeTheme.isDark) ThemeManager.prefs.lightModeTheme else ThemeManager.prefs.darkModeTheme).getValue()
-            ThemeManager.setNormalModeTheme(theme)
+            ThemeManager.toggleNightMode()
             KeyboardManager.instance.clearKeyboard()
             KeyboardManager.instance.switchKeyboard()
         }
@@ -136,6 +135,7 @@ fun onSettingsMenuClick(inputView: InputView, skbMenuMode: SkbMenuMode) {
         SkbMenuMode.LockClipBoard -> {
             CustomConstant.lockClipBoardEnable = !CustomConstant.lockClipBoardEnable
         }
+        SkbMenuMode.ClipboardSearch -> (KeyboardManager.instance.currentContainer as? ClipBoardContainer)?.openSearch()
         SkbMenuMode.TextEdit -> {
             InputModeSwitcher.switchModeForUserKey(
                 if(InputModeSwitcher.isTextEditSkb) InputModeSwitcher.USER_KEYCODE_RETURN

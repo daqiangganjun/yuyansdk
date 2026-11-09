@@ -50,6 +50,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         val soundOnKeyPress = int("key_press_vibration_amplitude",0)     //按键音量
         val vibrationAmplitude = int("key_press_sound_volume", 0)     //触感强度
+        val soundEnabled = bool("key_press_sound_enabled", true)
+        val vibrationEnabled = bool("key_press_vibration_enabled", true)
+        val isSoundEnabled: Boolean
+            get() = if (this@AppPrefs.sharedPreferences.contains(soundEnabled.key)) soundEnabled.getValue()
+                else soundOnKeyPress.getValue() !in 5..10
+        val isVibrationEnabled: Boolean
+            get() = if (this@AppPrefs.sharedPreferences.contains(vibrationEnabled.key)) vibrationEnabled.getValue()
+                else vibrationAmplitude.getValue() != 1
 
         val privacyPolicySure = bool("privacy_policy_sure", false) //是否同意隐私政策
     }
@@ -327,6 +335,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         ) {
             clipboardListening.getValue()
         }
+        val clipboardFloatingEnter = switch(
+            R.string.clipboard_floating_enter, "clipboard_floating_enter", true, R.string.clipboard_floating_enter_summary
+        )
     }
 
     private val providers = mutableListOf<ManagedPreferenceProvider>()
@@ -368,6 +379,8 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             internal.managedPreferences.forEach {
                 it.value.putValueTo(this@edit)
             }
+            putBoolean(internal.soundEnabled.key, internal.isSoundEnabled)
+            putBoolean(internal.vibrationEnabled.key, internal.isVibrationEnabled)
 
             input.managedPreferences.forEach {
                 it.value.putValueTo(this@edit)

@@ -20,6 +20,7 @@ import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.KeyboardSymbolSlideUpMod
 import com.yuyan.imemodule.prefs.behavior.PopupMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
+import com.yuyan.imemodule.speech.VoiceInputPanel
 import com.yuyan.imemodule.utils.DevicesUtils
 import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.view.popup.PopupComponent.Companion.get
@@ -41,6 +42,9 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     protected var mLongPressKey = false
     private var mAbortKey = false
     private var voicePress = false
+    private var voiceCancelArmed = false
+    private var voiceStartX = 0f
+    private var voiceStartY = 0f
     private var mHandler: Handler? = null
     protected var mDrawPending = false
     protected var mService: InputView? = null
@@ -120,9 +124,11 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
             val softKey = mCurrentKey!!
             if (softKey.code == KeyEvent.KEYCODE_SPACE) {
                 voicePress = true
+                voiceCancelArmed = false
                 mAbortKey = true
                 popupComponent.dismissPopup()
-                mService?.startVoiceInput()
+                val location = IntArray(2).also(::getLocationInWindow)
+                mService?.startVoiceInput(location[1] + softKey.mTop)
                 return
             }
             val keyboardSymbol = ThemeManager.prefs.keyboardSymbol.getValue()
@@ -153,6 +159,11 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(me: MotionEvent): Boolean {
         var result = false
+        if (voicePress && me.actionMasked == MotionEvent.ACTION_MOVE) {
+            trackVoiceCancel(me)
+            return true
+        }
+        if (voicePress && me.actionMasked == MotionEvent.ACTION_UP) trackVoiceCancel(me)
         if (mGestureDetector!!.onTouchEvent(me)) {
             return true
         }
@@ -197,6 +208,9 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     private fun onModifiedTouchEvent(me: MotionEvent): Boolean {
         when (me.action) {
             MotionEvent.ACTION_DOWN -> {
+                voiceCancelArmed = false
+                voiceStartX = me.rawX
+                voiceStartY = me.rawY
                 mCurrentKey = getKeyIndices(me.x.toInt(), me.y.toInt())
                 mAbortKey = false
                 mLongPressKey = false
@@ -212,7 +226,8 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
             MotionEvent.ACTION_UP -> {
                 if (voicePress) {
                     voicePress = false
-                    mService?.finishVoiceInput()
+                    if (voiceCancelArmed) mService?.cancelVoiceInput() else mService?.finishVoiceInput()
+                    voiceCancelArmed = false
                 }
                 mCurrentKey?.onReleased()
                 mCurrentKey = getKeyIndices(me.x.toInt(), me.y.toInt())
@@ -226,6 +241,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
             MotionEvent.ACTION_CANCEL -> {
                 if (voicePress) {
                     voicePress = false
+                    voiceCancelArmed = false
                     mService?.cancelVoiceInput()
                 }
                 removeMessages()
@@ -234,6 +250,17 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
             }
         }
         return true
+    }
+
+    /** 上滑超过阈值进入「松开取消」并暂停识别，回落到较低阈值以下恢复；最终取消与否在松手时决定。 */
+    private fun trackVoiceCancel(event: MotionEvent) {
+        val up = voiceStartY - event.rawY
+        val density = resources.displayMetrics.density
+        val armed = if (voiceCancelArmed) up >= VoiceInputPanel.VOICE_RESUME_DP * density
+            else up >= VoiceInputPanel.VOICE_CANCEL_DP * density && up > abs(event.rawX - voiceStartX)
+        if (armed == voiceCancelArmed) return
+        voiceCancelArmed = armed
+        mService?.setVoiceCancelArmed(armed)
     }
 
     private var lastEventX:Float = -1f
@@ -382,6 +409,7 @@ open class BaseKeyboardView(mContext: Context?) : View(mContext) {
     open fun closing() {
         if (voicePress) {
             voicePress = false
+            voiceCancelArmed = false
             mService?.cancelVoiceInput()
         }
         removeMessages()

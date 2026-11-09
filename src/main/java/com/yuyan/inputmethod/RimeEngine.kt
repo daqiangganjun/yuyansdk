@@ -141,17 +141,17 @@ object RimeEngine {
             when (charCase) {
                 KeyEvent.META_SHIFT_ON -> {
                     for (item in candidates) {
-                        if (InputModeSwitcher.isEnglish) item.text = item.text.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                        if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
                     }
                 }
                 KeyEvent.META_CAPS_LOCK_ON -> {
                     for (item in candidates) {
-                        item.text = item.text.uppercase()
+                        item.text = if (InputModeSwitcher.isEnglish) englishCase(item.text) else item.text.uppercase()
                     }
                 }
                 else -> {
                     for (item in candidates) {
-                        if (InputModeSwitcher.isEnglish) item.text = item.text.lowercase()
+                        if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
                     }
                 }
             }
@@ -408,10 +408,13 @@ object RimeEngine {
         if (!EngineRuntime.isReady) return null
         val rimeCommit = Rime.getRimeCommit()
         if (rimeCommit != null) {
+            com.yuyan.imemodule.data.transfer.DataChangeTracker.learningChanged(EngineRuntime.learningDictionary(), rimeCommit.commitText)
             keyRecordStack.clear()
             editCaret = -1
             preCommitText = rimeCommit.commitText
-            preCommitText = if (charCase == KeyEvent.META_SHIFT_ON) {
+            preCommitText = if (InputModeSwitcher.isEnglish) {
+                englishCase(preCommitText)
+            } else if (charCase == KeyEvent.META_SHIFT_ON) {
                 preCommitText.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
             } else if (charCase == KeyEvent.META_CAPS_LOCK_ON) {
                 preCommitText.uppercase()
@@ -456,15 +459,15 @@ object RimeEngine {
         var composition = getCurrentComposition(candidates, rimeSchema)
         when (charCase) {
             KeyEvent.META_SHIFT_ON -> {
-                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = item.text.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
                 composition = composition.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
             }
             KeyEvent.META_CAPS_LOCK_ON -> {
-                for (item in showCandidates) item.text = item.text.uppercase()
+                for (item in showCandidates) item.text = if (InputModeSwitcher.isEnglish) englishCase(item.text) else item.text.uppercase()
                 composition = composition.uppercase()
             }
             else -> {
-                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = item.text.lowercase()
+                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
                 composition = composition.lowercase()
             }
         }
@@ -484,6 +487,20 @@ object RimeEngine {
         return null
     }
 
+    private fun englishCase(text: String): String {
+        if (rawInput.isEmpty()) return when (charCase) {
+            KeyEvent.META_SHIFT_ON -> text.lowercase().replaceFirstChar { it.titlecase(Locale.getDefault()) }
+            KeyEvent.META_CAPS_LOCK_ON -> text.uppercase()
+            else -> text.lowercase()
+        }
+        return buildString(text.length) {
+            text.forEachIndexed { index, char ->
+                val upper = if (index < rawInput.length) rawInput[index].isUpperCase() else charCase == KeyEvent.META_CAPS_LOCK_ON
+                append(if (upper) char.uppercaseChar() else char.lowercaseChar())
+            }
+        }
+    }
+
     /**
      * 拿到候选词拼音组合
      */
@@ -495,6 +512,7 @@ object RimeEngine {
     private fun getCurrentComposition(candidates: List<CandidateListItem>, rimeSchema: String): String {
         val composition = Rime.compositionText
         if(rimeSchema == CustomConstant.SCHEMA_EN) return ""
+        if(rimeSchema == CustomConstant.SCHEMA_ZH_QWERTY) return composition
         if(composition.isEmpty()) return ""
         if(candidates.isEmpty()) return composition
         val comment = candidates.first().comment.trim().replace(Regex("\\s+"), "'")

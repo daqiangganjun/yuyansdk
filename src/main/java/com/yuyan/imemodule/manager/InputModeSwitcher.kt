@@ -1,6 +1,7 @@
 package com.yuyan.imemodule.manager
 
 import android.view.KeyEvent
+import android.os.SystemClock
 import android.view.inputmethod.EditorInfo
 import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
@@ -300,10 +301,11 @@ object InputModeSwitcher {
     }
 
     // 记录SHIFT点击时间，作为双击判断
-    private var lsatClickTime = 0L
+    private var lastShiftClickTime = 0L
 
     fun processShiftKey(userKey: Int) {
-        mToggleStates.modifiers = if(System.currentTimeMillis() - lsatClickTime < 300){
+        val now = SystemClock.uptimeMillis()
+        mToggleStates.modifiers = if(mToggleStates.modifiers == KeyEvent.META_SHIFT_ON && now - lastShiftClickTime < 300){
             KeyEvent.META_CAPS_LOCK_ON
         } else if (MASK_CASE_LOWER == mToggleStates.modifiers) {
             KeyEvent.META_SHIFT_ON
@@ -311,7 +313,7 @@ object InputModeSwitcher {
             MASK_CASE_LOWER
         }
         Kernel.setCharCase(mToggleStates.modifiers)
-        lsatClickTime = System.currentTimeMillis()
+        lastShiftClickTime = now
         (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()
     }
 
@@ -375,6 +377,7 @@ object InputModeSwitcher {
      * 大写模式下输入任何按键后，Shift按键状态重置一下
      */
     fun resetCharCase() {
+        lastShiftClickTime = 0L
         if(mToggleStates.modifiers == KeyEvent.META_SHIFT_ON){
             mToggleStates.modifiers = MASK_CASE_LOWER
             (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()

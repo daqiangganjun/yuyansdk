@@ -19,14 +19,12 @@ object InputFeedbacks {
     private val audioManager = Launcher.instance.context.audioManager
 
     fun hapticFeedback(view: View) {
+        if (!AppPrefs.getInstance().internal.isVibrationEnabled) return
         val duration = when (vibrationAmplitude) {
-            0 -> {
-                @Suppress("DEPRECATION")
-                val flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING or HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, flags)
+            0, 1 -> {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 0L
             }
-            1 -> 0L
             2 -> 5L
             3 -> 30L
             else -> 50L
@@ -46,16 +44,15 @@ object InputFeedbacks {
     }
 
     fun soundEffect(effect: SoundEffect) {
+        if (!AppPrefs.getInstance().internal.isSoundEnabled) return
         val fx = when (effect) {
             SoundEffect.Standard -> AudioManager.FX_KEYPRESS_STANDARD
             SoundEffect.SpaceBar -> AudioManager.FX_KEYPRESS_SPACEBAR
             SoundEffect.Delete -> AudioManager.FX_KEYPRESS_DELETE
             SoundEffect.Return -> AudioManager.FX_KEYPRESS_RETURN
         }
-        if (soundOnKeyPress < 5) {
-            audioManager.playSoundEffect(fx, -1f)
-        } else if (soundOnKeyPress < 10) {
-            return
+        if (soundOnKeyPress <= 10) {
+            audioManager.playSoundEffect(fx)
         } else {
             audioManager.playSoundEffect(fx, (soundOnKeyPress - 10) / 30f)
         }

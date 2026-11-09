@@ -130,6 +130,9 @@ class Rime(fullCheck: Boolean) {
         external fun migrateUserData(sharedDir: String, stagedUserDir: String): Boolean
 
         @JvmStatic
+        external fun transferUserDictionary(sharedDir: String, userDir: String, dictionary: String, path: String, importing: Boolean): Int
+
+        @JvmStatic
         external fun getLastError(): String
 
         @JvmStatic

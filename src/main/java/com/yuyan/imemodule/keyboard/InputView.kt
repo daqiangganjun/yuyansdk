@@ -81,6 +81,7 @@ import splitties.dimensions.dp
 import splitties.views.bottomPadding
 import splitties.views.rightPadding
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 /**
  * 输入法主界面。
@@ -121,24 +122,54 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         return true
     }
 
-    fun startVoiceInput() = service.startVoiceInput()
+    fun startVoiceInput(coverBottomInWindow: Int = -1) = service.startVoiceInput(coverBottomInWindow)
     fun finishVoiceInput() = service.finishVoiceInput()
     fun cancelVoiceInput() = service.cancelVoiceInput()
+    fun setVoiceCancelArmed(armed: Boolean) = service.setVoiceCancelArmed(armed)
     private val appPrefs = getInstance()
     lateinit var auxiliaryPanel: KeyboardAuxiliaryPanel
         private set
     val terminalInput = TerminalInputDispatcher(
         { service.activeInputConnection },
-        { if (::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing) null else service.currentInputEditorInfo },
+        { if (localInputConnection != null) null else service.currentInputEditorInfo },
     ) { if (::auxiliaryPanel.isInitialized) auxiliaryPanel.refresh() }
 
-    val localInputConnection get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputConnection else null
-    val isTransformingText get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
+    private lateinit var clipboardSearchPanel: com.yuyan.imemodule.view.ClipboardSearchPanel
+    private var clipboardSearchResult: ((String?) -> Unit)? = null
+    val isClipboardSearchActive get() = ::clipboardSearchPanel.isInitialized && clipboardSearchPanel.isSearching
+    val localInputConnection get() = (if (isClipboardSearchActive) clipboardSearchPanel.inputConnection else null)
+        ?: if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputConnection else null
+    val isTransformingText get() = !isClipboardSearchActive && ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
     val hasFlowerDraft get() = isTransformingText && auxiliaryPanel.hasDraft
     val flowerInputRouteRevision get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputRouteRevision else 0L
     val wantsFlowerSourceInput get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.wantsSourceInput
-    private val hasTerminalModifiers get() = InputModeSwitcher.isTerminalMode && terminalInput.modifiers.metaState != 0
-    val isTerminalTarget get() = !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
+    private val hasTerminalModifiers get() = !isClipboardSearchActive && InputModeSwitcher.isTerminalMode && terminalInput.modifiers.metaState != 0
+    val isTerminalTarget get() = !isClipboardSearchActive && !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
+
+    fun startClipboardSearch(query: String, hint: String, result: (String?) -> Unit) {
+        prepareAuxiliaryAction()
+        auxiliaryPanel.cancelFunctionKeyInput()
+        resetToIdleState()
+        clipboardSearchResult = result
+        clipboardSearchPanel.open(query, hint)
+        KeyboardManager.instance.switchKeyboard()
+        updateCandidateBar()
+        (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()
+    }
+
+    private fun finishClipboardSearch(apply: Boolean, notify: Boolean = true) {
+        if (!isClipboardSearchActive) return
+        service.cancelVoiceInput()
+        if (apply) { commitPendingCandidate(); service.finishComposingText() }
+        val query = clipboardSearchPanel.query
+        resetToIdleState()
+        val callback = clipboardSearchResult
+        clipboardSearchResult = null
+        clipboardSearchPanel.close()
+        updateCandidateBar()
+        (KeyboardManager.instance.currentContainer as? InputBaseContainer)?.updateStates()
+        if (notify) callback?.invoke(if (apply) query else null)
+    }
 
     fun prepareAuxiliaryAction() {
         service.cancelVoiceInput()
@@ -155,6 +186,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         hasSelection = false
         hasSelectionAll = false
         InputModeSwitcher.setTerminalMode(!InputModeSwitcher.isTerminalMode)
+        if (InputModeSwitcher.isTextEditSkb) KeyboardManager.instance.currentContainer?.updateSkbLayout()
         auxiliaryPanel.onStartInput(restarting = true)
         updateCandidateBar()
     }
@@ -197,7 +229,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
     }
 
-    fun finishAuxiliaryInput() {
+    fun finishAuxiliaryInput(preserveClipboardSearch: Boolean = false) {
+        if (!preserveClipboardSearch) finishClipboardSearch(false, false)
         if (::auxiliaryPanel.isInitialized) auxiliaryPanel.finishInput()
     }
 
@@ -236,7 +269,15 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             includeFontPadding = false
             maxLines = 1
             setPadding(dp(8), dp(2), dp(8), dp(2))
+            isClickable = true
+            isFocusable = false
+            isFocusableInTouchMode = false
             attachComposingCaretTouch(this)
+            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) {
+                    service.window.window?.decorView?.requestLayout()
+                }
+            }
         }
     }
 
@@ -287,6 +328,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     init {
         mSkbRoot = LayoutInflater.from(context).inflate(R.layout.sdk_skb_container, this, false) as RelativeLayout
         addView(mSkbRoot)
+        mSkbRoot.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateComposingSurface() }
+        addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onFloatWindowLayout() }
         mSkbCandidatesBarView = mSkbRoot.findViewById(R.id.candidates_bar)
         mHoderLayoutLeft = mSkbRoot.findViewById(R.id.ll_skb_holder_layout_left)
         mHoderLayoutRight = mSkbRoot.findViewById(R.id.ll_skb_holder_layout_right)
@@ -298,6 +341,9 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             { hasPendingCandidateInput() },
             { onFlowerInputRouteChanged() }, { onFlowerModeChanged() }, { toggleTerminalMode() })
         mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_flower_panel).addView(auxiliaryPanel)
+        clipboardSearchPanel = com.yuyan.imemodule.view.ClipboardSearchPanel(context,
+            { finishClipboardSearch(true) }, { finishClipboardSearch(false) })
+        mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_flower_panel).addView(clipboardSearchPanel, 0)
         mSkbRoot.findViewById<LinearLayout>(R.id.keyboard_auxiliary_panel).addView(auxiliaryPanel.terminalKeys)
         initSystemBars()
         KeyboardManager.instance.setData(mSkbRoot.findViewById(R.id.skb_input_keyboard_view), this)
@@ -330,8 +376,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 }
             }
         }
-        addView(engineStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+        addView(engineStatus, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             addRule(ALIGN_TOP, mSkbRoot.id)
+            addRule(ALIGN_LEFT, mSkbRoot.id)
+            addRule(ALIGN_RIGHT, mSkbRoot.id)
         })
         EngineRuntime.status.observe(this) { state ->
             engineStatus.text = state.message
@@ -416,26 +464,94 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.bottomPadding = mBottomPaddingKey.getValue()
             mSkbRoot.rightPadding = mRightPaddingKey.getValue()
         }
+        applyWindowFitting(env.keyboardModeFloat)
         updateBottomHolderInsets()
         updateTheme()
+    }
+
+    /**
+     * 输入法窗口默认会按状态栏再向下垫一次顶部内边距，悬浮键盘因此到不了窗口顶部。
+     * 悬浮时只保留导航栏避让，让内容区贴到窗口顶部；停靠时恢复系统默认。
+     */
+    private fun applyWindowFitting(floating: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val window = service.window.window ?: return
+        val navigationBars = android.view.WindowInsets.Type.navigationBars()
+        val target = if (floating) navigationBars else navigationBars or android.view.WindowInsets.Type.statusBars()
+        val attributes = window.attributes
+        if (attributes.fitInsetsTypes == target) return
+        attributes.fitInsetsTypes = target
+        window.attributes = attributes
     }
 
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var rightPaddingValue = 0
     private var bottomPaddingValue = 0
-    private var mSkbRootHeight = 0
-    private var mSkbRootWidth = 0
+    private var moveStartBottomPadding = 0
+    private var moveMaxRight = 0
+    private var moveMaxBottom = 0
+
+    /**
+     * 悬浮键盘右、下边距的可调上限。
+     *
+     * 以键盘不受挤压时的自然尺寸与窗口内容区尺寸计算：窗口顶部有状态栏与刘海避让，
+     * 按屏幕高度或按已被挤压的当前高度计算都会偏大，使键盘被推到顶部而底行被裁掉。
+     */
+    fun floatKeyboardOffsetLimits(): Pair<Int, Int> {
+        mSkbRoot.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        return (width - mSkbRoot.measuredWidth).coerceAtLeast(0) to (height - mSkbRoot.measuredHeight).coerceAtLeast(0)
+    }
+
+    private fun onFloatWindowLayout() {
+        val env = EnvironmentSingleton.instance
+        if (!env.keyboardModeFloat || height <= 0 || !::mBottomPaddingKey.isInitialized) return
+        if (env.floatMaxAreaHeight != height) {
+            post { fitFloatKeyboardHeight() }
+        } else if (mSkbRoot.top <= paddingTop) {
+            post { clampFloatKeyboardPadding() }
+        }
+    }
+
+    private fun fitFloatKeyboardHeight() {
+        val env = EnvironmentSingleton.instance
+        if (!env.keyboardModeFloat || height <= 0 || env.floatMaxAreaHeight == height) return
+        env.floatMaxAreaHeight = height
+        env.initData()
+        KeyboardManager.instance.refreshKeyboardSize()
+    }
+
+    private fun clampFloatKeyboardPadding() {
+        if (!EnvironmentSingleton.instance.keyboardModeFloat) return
+        val (maxRight, maxBottom) = floatKeyboardOffsetLimits()
+        val bottom = paddingBottom.coerceAtMost(maxBottom)
+        val right = paddingRight.coerceAtMost(maxRight)
+        if (bottom != paddingBottom) bottomPadding = bottom
+        if (right != paddingRight) rightPadding = right
+    }
 
     private fun onMoveKeyboardEvent(event: MotionEvent?): Boolean {
         when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
-                bottomPaddingValue = mBottomPaddingKey.getValue()
-                rightPaddingValue = mRightPaddingKey.getValue()
+                val env = EnvironmentSingleton.instance
+                if (env.keyboardModeFloat) {
+                    val (maxRight, maxBottom) = floatKeyboardOffsetLimits()
+                    moveMaxRight = maxRight
+                    moveMaxBottom = maxBottom
+                    bottomPaddingValue = paddingBottom.coerceIn(0, maxBottom)
+                    rightPaddingValue = paddingRight.coerceIn(0, maxRight)
+                } else {
+                    moveMaxBottom = (env.mScreenHeight - (mSkbRoot.height - mSkbRoot.paddingBottom)).coerceAtLeast(0)
+                    moveMaxRight = (width - mSkbRoot.width).coerceAtLeast(0)
+                    bottomPaddingValue = mBottomPaddingKey.getValue()
+                    rightPaddingValue = mRightPaddingKey.getValue()
+                }
+                moveStartBottomPadding = bottomPaddingValue
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
-                mSkbRootHeight = mSkbRoot.height
-                mSkbRootWidth = mSkbRoot.width
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -444,17 +560,13 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 val env = EnvironmentSingleton.instance
 
                 if (dx.absoluteValue > 10) {
-                    rightPaddingValue = (rightPaddingValue - dx.toInt()).coerceIn(0, (this.width - mSkbRootWidth).coerceAtLeast(0))
+                    rightPaddingValue = (rightPaddingValue - dx.toInt()).coerceIn(0, moveMaxRight)
                     initialTouchX = event.rawX
                     if (env.keyboardModeFloat) rightPadding = rightPaddingValue else mSkbRoot.rightPadding = rightPaddingValue
                 }
-                if (dy.absoluteValue > 10) {
-                    // 上界不能用 this.height：InputView 为 wrap_content，其高度恒等于
-                    // mSkbRoot.height + bottomPadding，该上界会恒等于当前值本身，
-                    // 使键盘只能向下移动、到底后彻底锁死。改以屏幕高度为基准。
-                    val maxBottom = (env.mScreenHeight - mSkbRootHeight).coerceAtLeast(0)
-                    bottomPaddingValue = (bottomPaddingValue - dy.toInt()).coerceIn(0, maxBottom)
-                    initialTouchY = event.rawY
+                val nextBottom = (moveStartBottomPadding - dy.roundToInt()).coerceIn(0, moveMaxBottom)
+                if (nextBottom != bottomPaddingValue) {
+                    bottomPaddingValue = nextBottom
                     if (env.keyboardModeFloat) bottomPadding = bottomPaddingValue else mSkbRoot.bottomPadding = bottomPaddingValue
                 }
                 return true
@@ -473,7 +585,10 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 height = EnvironmentSingleton.instance.skbHeight
             }
         }
+        mSkbCandidatesBarView.refreshDimensions()
+        updateBottomHolderInsets()
         updateKeyboardBackground()
+        auxiliaryPanel.terminalKeys.requestLayout()
         requestLayout()
     }
 
@@ -490,8 +605,27 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             mSkbRoot.background = background
         }
         applyFloatKeyboardOutline(env.keyboardModeFloat)
+        post { updateComposingSurface() }
     }
 
+    private var composingSurfaceKey: List<Any?>? = null
+    private fun updateComposingSurface() {
+        if (mSkbRoot.width <= 0 || mSkbRoot.height <= 0) return
+        val theme = ThemeManager.activeTheme
+        val key = listOf(mSkbRoot.background, mSkbRoot.width, mSkbRoot.height, mSkbRoot.paddingLeft,
+            mSkbRoot.paddingTop, mSkbRoot.paddingRight, mSkbRoot.paddingBottom, theme.keyTextColor,
+            EnvironmentSingleton.instance.keyboardModeFloat)
+        if (key == composingSurfaceKey) return
+        composingSurfaceKey = key
+        val color = com.yuyan.imemodule.data.theme.ComposingBackgroundSampler.sample(mSkbRoot, theme.keyTextColor, theme.popupBackgroundColor)
+        composingBubble.setTextColor(theme.keyTextColor)
+        composingBubble.background = GradientDrawable().apply {
+            val radius = DevicesUtils.dip2px(8).toFloat()
+            cornerRadii = if (EnvironmentSingleton.instance.keyboardModeFloat) FloatArray(8) { radius }
+                else floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+            setColor(color)
+        }
+    }
     fun updateTheme() {
         auxiliaryPanel.updateTheme()
         // 本身不绘制内容，设为 null 比铺一层透明色少一次无效绘制
@@ -503,19 +637,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         composingBubble.apply {
             setTextColor(keyTextColor)
             textSize = EnvironmentSingleton.instance.composingTextSize
-            val radius = DevicesUtils.dip2px(8).toFloat()
-            this.background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                if (env.keyboardModeFloat) {
-                    // 悬浮键盘四角皆圆，气泡若下沿取直会显得突兀，故四角同样圆润
-                    cornerRadius = radius
-                } else {
-                    // 贴底键盘：下沿与键盘齐平，只做上方两角
-                    cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-                }
-                setColor(activeTheme.keyboardColor)
-            }
         }
+        updateComposingSurface()
         mSkbCandidatesBarView.updateTheme(keyTextColor)
         if (::mOnehandHoderLayout.isInitialized) {
             (mOnehandHoderLayout[0] as ImageButton).drawable?.setTint(keyTextColor)
@@ -542,12 +665,18 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         val text = handwritingReading ?: DecodingInfo.composingStrForDisplay
         if (text.isEmpty()) {
             setComposingBubbleEditing(false)
-            if (composingBubble.visibility != GONE) composingBubble.visibility = GONE
+            if (composingBubble.visibility != GONE) {
+                composingBubble.visibility = GONE
+                service.window.window?.decorView?.requestLayout()
+            }
             return
         }
         setComposingBubbleEditing(handwritingReading == null && DecodingInfo.caretInComposition >= 0)
         renderComposingBubbleText()
-        if (composingBubble.visibility != VISIBLE) composingBubble.visibility = VISIBLE
+        if (composingBubble.visibility != VISIBLE) {
+            composingBubble.visibility = VISIBLE
+            service.window.window?.decorView?.requestLayout()
+        }
     }
 
     /**
@@ -752,13 +881,17 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun processKeyUp(event: KeyEvent): Boolean {
         // 系统按键（返回键等）一律交由 InputMethodService 基类处理，以保持 DOWN/UP 消费状态一致
         if(event.isSystem) return false
+        if (isClipboardSearchActive && event.keyCode == KeyEvent.KEYCODE_ENTER) {
+            finishClipboardSearch(true)
+            return true
+        }
         if (auxiliaryPanel.consumeFunctionKeyInput(event.keyCode)) return true
         if (event.keyCode == KeyEvent.KEYCODE_ENTER && isTransformingText && !hasTerminalModifiers) {
             auxiliaryPanel.completeFlowerInput()
             return true
         }
-        if (!isAddPhrases && InputModeSwitcher.isTerminalMode &&
-            (InputModeSwitcher.isEnglish || terminalInput.modifiers.metaState != 0)) {
+        if (!isAddPhrases && !isClipboardSearchActive && InputModeSwitcher.isTerminalMode &&
+            (InputModeSwitcher.isEnglish || terminalInput.modifiers.metaState != 0 || event.isAltPressed || event.isCtrlPressed)) {
             return processTerminalKey(event)
         }
         if(isFunctionKey(event.keyCode)){
@@ -767,7 +900,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
         if (!EngineRuntime.isReady && (InputModeSwitcher.isChinese || InputModeSwitcher.isEnglish)) return true
         InputModeSwitcher.resetCharCase()
-        val englishCellDisable = InputModeSwitcher.isEnglish && !appPrefs.input.abcSearchEnglishCell.getValue()
+        val englishCellDisable = InputModeSwitcher.isEnglish && (isClipboardSearchActive || !appPrefs.input.abcSearchEnglishCell.getValue())
         return when {
             englishCellDisable -> processEnglishKey(event)
             InputModeSwitcher.isEnglish || InputModeSwitcher.isChinese -> processInput(event)
@@ -1066,6 +1199,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     fun updateCandidateBar() {
         if (::auxiliaryPanel.isInitialized) auxiliaryPanel.refresh()
+        if (isClipboardSearchActive) auxiliaryPanel.visibility = GONE
         updateComposingBubble()
         mSkbCandidatesBarView.scheduleShowCandidates()
     }
@@ -1108,6 +1242,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onSettingsMenuClick(skbMenuMode: SkbMenuMode, extra: Phrase? = null) {
+        finishClipboardSearch(false, false)
         auxiliaryPanel.cancelFunctionKeyInput()
         if (skbMenuMode == SkbMenuMode.AddPhrases) {
             isAddPhrases = true
@@ -1265,13 +1400,14 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     private fun commitText(text: String) {
-        if (isAddPhrases) mAddPhrasesLayout.commitText(text)
-        else if (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
+        if (isClipboardSearchActive) service.commitText(text)
+        else if (isAddPhrases) mAddPhrasesLayout.commitText(text)
+        else if (hasTerminalModifiers || !isClipboardSearchActive && InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
         else service.commitText(text)
     }
 
     private fun commitPairSymbol(text: String) {
-        if (!isAddPhrases && (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish)) {
+        if (!isAddPhrases && !isClipboardSearchActive && (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish)) {
             terminalInput.sendText(text)
             return
         }
@@ -1337,6 +1473,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        if (restarting && isClipboardSearchActive) {
+            updateCandidateBar()
+            return
+        }
+        if (!restarting) finishClipboardSearch(false, false)
         if (!restarting) terminalInput.modifiers.clear()
         InputModeSwitcher.requestInputWithSkb(editorInfo)
         if (!restarting) {

@@ -68,7 +68,9 @@ class ClipBoardAdapter(context: Context, datas: MutableList<Clipboard>) :
             id = R.id.clipboard_adapter_content
             maxLines = 3
             ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            setPadding(dip2px(8), dip2px(6), dip2px(28), dip2px(6))
             layoutParams = RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT).apply {
                 margin = marginValue
                 addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)

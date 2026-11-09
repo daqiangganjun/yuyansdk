@@ -14,7 +14,9 @@ kotlin {
 }
 
 static def getAppGitHead() {
-    return "git rev-parse HEAD".execute().text.trim()
+    def head = "git rev-parse HEAD".execute().text.trim()
+    def dirty = "git status --porcelain --untracked-files=normal".execute().text.trim()
+    return dirty.isEmpty() ? head : head + "-dirty"
 }
 
 static def getAppBuildTime() {
@@ -97,7 +99,7 @@ def nativeSourceRoot = providers.gradleProperty('rimeSourceRoot').orElse(file('n
 tasks.register('buildRimeNative', Exec) {
     inputs.files(fileTree('native') { exclude '.cache/**', 'build/**', '__pycache__/**' })
     inputs.file('src/main/java/com/yuyan/inputmethod/util/LX17PinYinUtils.kt')
-    outputs.dir("$buildDir/generated/rime")
+    outputs.dirs("$buildDir/generated/rime/assets", "$buildDir/generated/rime/jniLibs", "$buildDir/generated/rime/dictionary")
     commandLine 'python', file('native/build_native.py').absolutePath,
         '--sdk', android.sdkDirectory.absolutePath, '--source-root', nativeSourceRoot.get()
     if (providers.gradleProperty('rimeSkipFetch').isPresent()) args '--skip-fetch'
@@ -105,6 +107,7 @@ tasks.register('buildRimeNative', Exec) {
 tasks.named('preBuild').configure { dependsOn 'buildRimeNative' }
 
 dependencies {
+    implementation 'org.yaml:snakeyaml:2.3'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [])
     implementation 'androidx.appcompat:appcompat:1.7.0'

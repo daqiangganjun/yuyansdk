@@ -23,7 +23,7 @@ class SpeechCredentials(context: Context) {
     @Synchronized
     fun read(providerId: String): String? {
         val source = file(providerId)
-        if (!source.baseFile.exists()) return null
+        if (!source.baseFile.exists() && !File(source.baseFile.path + ".bak").exists()) return null
         return runCatching {
             val bytes = source.readFully()
             require(bytes.size > 12) { "Invalid credential data" }

@@ -85,6 +85,10 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
         darkModeTheme.key
     )
 
+    var manualNightMode: Boolean?
+        get() = if (sharedPreferences.contains("theme_manual_night_mode")) sharedPreferences.getBoolean("theme_manual_night_mode", false) else null
+        set(value) { sharedPreferences.edit().apply { if (value == null) remove("theme_manual_night_mode") else putBoolean("theme_manual_night_mode", value) }.apply() }
+
     // 键盘设置title
     val titleKeyboardSetting = category(R.string.setting_ime_keyboard_show)
 

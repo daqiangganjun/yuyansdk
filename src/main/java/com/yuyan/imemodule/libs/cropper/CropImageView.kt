@@ -76,6 +76,8 @@ class CropImageView @JvmOverloads constructor(
 
   /** If the image flipped vertically  */
   private var mFlipVertically: Boolean
+  val flippedHorizontally: Boolean get() = mFlipHorizontally
+  val flippedVertically: Boolean get() = mFlipVertically
   private var mLayoutWidth = 0
   private var mLayoutHeight = 0
   private var mImageResource = 0
@@ -1359,6 +1361,8 @@ class CropImageView @JvmOverloads constructor(
     val rotation: Int,
     /** Sample size used creating the crop bitmap to lower its size. */
     val sampleSize: Int,
+    val flipHorizontal: Boolean = false,
+    val flipVertical: Boolean = false,
   ) {
     val isSuccessful: Boolean
       get() = error == null

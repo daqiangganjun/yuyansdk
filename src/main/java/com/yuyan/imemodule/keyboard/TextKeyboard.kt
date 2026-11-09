@@ -77,7 +77,9 @@ open class TextKeyboard(context: Context?) : BaseKeyboardView(context){
      */
     fun updateStates() {
         val enterKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_ENTER) as? SoftKeyToggle
-        val enterChanged = enterKey?.enableToggleState(if (mService!!.isTransformingText) {
+        val enterChanged = enterKey?.enableToggleState(if (mService!!.isClipboardSearchActive) {
+            android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+        } else if (mService!!.isTransformingText) {
             if (mService!!.hasFlowerDraft) android.view.inputmethod.EditorInfo.IME_ACTION_DONE else 8
         } else if (mService!!.isAddPhrases) 4 else if (InputModeSwitcher.isTerminalMode) 0 else InputModeSwitcher.mToggleStates.imeAction) == true
         val shiftKey = mSoftKeyboard?.getKeyByCode(KeyEvent.KEYCODE_SHIFT_LEFT) as? SoftKeyToggle

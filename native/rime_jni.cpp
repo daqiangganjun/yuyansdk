@@ -211,6 +211,39 @@ JNI_RIME(jboolean) METHOD(migrateUserData)(JNIEnv* env, jclass, jstring shared, 
         return true;
     });
 }
+JNI_RIME(jint) METHOD(transferUserDictionary)(JNIEnv* env, jclass, jstring shared, jstring user,
+                                            jstring dictionary, jstring path, jboolean importing) {
+    return protect<jint>(-1, [&]() -> jint {
+        const auto name = utf8(env, dictionary);
+        if (name != "rime_frost" && name != "rime_ice" && name != "melt_eng" && name != "stroke" &&
+            !(!importing && (name == "pinyin" || name == "english"))) {
+            last_error = "Unsupported user dictionary";
+            return -1;
+        }
+        const auto target = utf8(env, path);
+        const auto directory = utf8(env, user);
+        if (session) {
+            last_error = "User dictionary transfer requires an idle engine";
+            return -1;
+        }
+        if (!importing && !std::ifstream(directory + "/" + name + ".userdb/CURRENT")) {
+            std::ofstream stream(target);
+            return stream.good() ? 0 : -1;
+        }
+        initialize(utf8(env, shared), directory);
+        auto module = api->find_module("levers");
+        if (!module || !module->get_api) {
+            last_error = "User dictionary tools are unavailable";
+            shutdown();
+            return -1;
+        }
+        const auto levers = reinterpret_cast<RimeLeversApi*>(module->get_api());
+        const auto result = importing ? levers->import_user_dict(name.c_str(), target.c_str())
+                                      : levers->export_user_dict(name.c_str(), target.c_str());
+        if (result < 0) last_error = "User dictionary transfer failed";
+        return result;
+    });
+}
 JNI_RIME(jboolean) METHOD(processRimeKey)(JNIEnv*, jclass, jint key, jint mask) {
     return protect<jboolean>(false, [&] { return session && api->process_key(session, key, mask); });
 }

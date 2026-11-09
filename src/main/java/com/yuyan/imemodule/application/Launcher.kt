@@ -22,12 +22,15 @@ class Launcher {
 
     fun initData(context: Context) {
         this.context = context
+        val process = if (Build.VERSION.SDK_INT >= 28) Application.getProcessName() else File("/proc/self/cmdline").readText().substringBefore('\u0000')
+        if (process.endsWith(":dictbuild")) return
         currentInit()
         onInitDataChildThread()
     }
 
     private fun currentInit() {
         AppPrefs.init(PreferenceManager.getDefaultSharedPreferences(context))
+        com.yuyan.imemodule.data.transfer.DataChangeTracker.initialize(context)
         ThemeManager.init(context.resources.configuration)
         ClipboardHelper.init()
     }
@@ -40,6 +43,7 @@ class Launcher {
             else File("/proc/self/cmdline").readText().substringBefore('\u0000')
         // 手写独立进程只使用自己的模型，不能重复打开主进程的 Rime 用户词库。
         if (processName != context.packageName) return
+        com.yuyan.imemodule.data.transfer.TransferCoordinator.initialize(context)
         // 建库与默认数据写入走独立调度，不排在词库复制之后，否则首次安装时
         // 侧符号栏与候选栏菜单会在整个复制期间为空
         DataBaseKT.preload()

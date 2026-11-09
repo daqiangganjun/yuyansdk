@@ -14,6 +14,9 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.addCallback
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -57,7 +60,14 @@ open class CropImageActivity : AppCompatActivity(), OnSetImageUriCompleteListene
     super.onCreate(savedInstanceState)
 
     binding = CropImageActivityBinding.inflate(layoutInflater)
+    enableEdgeToEdge()
     setContentView(binding.root)
+    setSupportActionBar(binding.cropToolbar)
+    ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+      insets
+    }
     setCropImageView(binding.cropImageView)
     val bundle = intent.getBundleExtra(CropImage.CROP_IMAGE_EXTRA_BUNDLE)
     cropImageUri = bundle?.parcelable(CropImage.CROP_IMAGE_EXTRA_SOURCE)
@@ -242,6 +252,7 @@ open class CropImageActivity : AppCompatActivity(), OnSetImageUriCompleteListene
     if (cropImageOptions.cropMenuCropButtonTitle != null) {
       menu.findItem(R.id.crop_image_menu_crop).title =
         cropImageOptions.cropMenuCropButtonTitle
+      menu.findItem(R.id.crop_image_menu_crop).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
     }
 
     var cropIcon: Drawable? = null
@@ -334,8 +345,10 @@ open class CropImageActivity : AppCompatActivity(), OnSetImageUriCompleteListene
         cropImageView?.cropRect = cropImageOptions.initialCropWindowRectangle
       }
 
-      if (cropImageOptions.initialRotation > 0) {
+      if (cropImageOptions.initialRotation >= 0) {
         cropImageView?.rotatedDegrees = cropImageOptions.initialRotation
+        if (view.flippedHorizontally != cropImageOptions.flipHorizontally) view.flipImageHorizontally()
+        if (view.flippedVertically != cropImageOptions.flipVertically) view.flipImageVertically()
       }
 
       if (cropImageOptions.skipEditing) {
@@ -414,6 +427,8 @@ open class CropImageActivity : AppCompatActivity(), OnSetImageUriCompleteListene
         rotation = cropImageView?.rotatedDegrees ?: 0,
         wholeImageRect = cropImageView?.wholeImageRect,
         sampleSize = sampleSize,
+        flipHorizontal = cropImageView?.flippedHorizontally ?: false,
+        flipVertical = cropImageView?.flippedVertically ?: false,
     )
     val intent = Intent()
     intent.extras?.let(intent::putExtras)

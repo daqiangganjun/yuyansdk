@@ -26,6 +26,7 @@ import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.singleton.EnvironmentSingleton.Companion.instance
 import splitties.views.padding
+import com.yuyan.imemodule.data.theme.ThemeControls
 
 /**
  * 候选词界面适配器
@@ -64,18 +65,17 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
         holder.itemView.isSelected = isSettingsMenuSelect(item)
         holder.entranceIconImageView?.contentDescription = item.funName
         holder.entranceIconImageView?.padding = mMenuPadding
-        val layoutParams = holder.entranceIconImageView?.layoutParams
-        layoutParams?.width = itemHeight
-        layoutParams?.height = itemHeight
-        holder.entranceIconImageView?.setImageResource(item.funImgResource)
-        val color = if (isSettingsMenuSelect(item)) activeTheme.accentKeyBackgroundColor else activeTheme.keyTextColor
-        holder.entranceIconImageView?.getDrawable()?.setTint(color)
-        if(ThemeManager.prefs.keyBorder.getValue()) {
-            val bg = GradientDrawable()
-            bg.setColor(activeTheme.keyBackgroundColor)
-            bg.shape = GradientDrawable.OVAL
-            holder.entranceIconImageView?.background = bg
+        holder.itemView.layoutParams = holder.itemView.layoutParams.apply {
+            width = itemHeight
+            height = itemHeight
         }
+        holder.entranceIconImageView?.setImageResource(item.funImgResource)
+        val selected = isSettingsMenuSelect(item)
+        val color = ThemeControls.foreground(activeTheme, selected)
+        holder.entranceIconImageView?.getDrawable()?.setTint(color)
+        holder.entranceIconImageView?.background = if (ThemeManager.prefs.keyBorder.getValue() || selected ||
+            activeTheme is com.yuyan.imemodule.data.theme.Theme.Custom && (activeTheme as com.yuyan.imemodule.data.theme.Theme.Custom).backgroundImage != null)
+            ThemeControls.background(activeTheme, selected, 0f, oval = true) else null
         if (mOnItemClickListener != null) {
             holder.itemView.setOnClickListener { v: View? ->
                 mOnItemClickListener!!.onItemClick(this, v, position)
@@ -89,7 +89,7 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
         val rimeValue = AppPrefs.getInstance().internal.pinyinModeRime.getValue()
         val result: Boolean = when (data.skbMenuMode) {
             // Setting Menu
-            SkbMenuMode.DarkTheme -> activeTheme.isDark
+            SkbMenuMode.DarkTheme -> ThemeManager.isNightMode
             SkbMenuMode.JianFan -> AppPrefs.getInstance().input.chineseFanTi.getValue()
             SkbMenuMode.LockEnglish -> AppPrefs.getInstance().keyboardSetting.keyboardLockEnglish.getValue()
             SkbMenuMode.SymbolShow -> ThemeManager.prefs.keyboardSymbol.getValue()
@@ -110,6 +110,7 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
             SkbMenuMode.Pinyin26Double -> rimeValue.startsWith(CustomConstant.SCHEMA_ZH_DOUBLE_FLYPY) && rimeValue != CustomConstant.SCHEMA_ZH_DOUBLE_LX17
             SkbMenuMode.PinyinStroke -> rimeValue == CustomConstant.SCHEMA_ZH_STROKE
             SkbMenuMode.LockClipBoard -> CustomConstant.lockClipBoardEnable
+            SkbMenuMode.ClipboardSearch -> (KeyboardManager.instance.currentContainer as? ClipBoardContainer)?.hasSearchQuery == true
             SkbMenuMode.TextEdit -> InputModeSwitcher.isTextEditSkb
             SkbMenuMode.TerminalMode -> InputModeSwitcher.isTerminalMode
             SkbMenuMode.SwitchKeyboard -> (KeyboardManager.instance.currentContainer as? SettingsContainer)?.isKeyboardSelectionVisible == true

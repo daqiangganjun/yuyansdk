@@ -63,6 +63,8 @@ object CropImage {
       rotation: Int,
       wholeImageRect: Rect?,
       sampleSize: Int,
+      flipHorizontal: Boolean = false,
+      flipVertical: Boolean = false,
     ) : super(
       originalUri = originalUri,
       bitmap = null,
@@ -73,6 +75,8 @@ object CropImage {
       wholeImageRect = wholeImageRect,
       rotation = rotation,
       sampleSize = sampleSize,
+      flipHorizontal = flipHorizontal,
+      flipVertical = flipVertical,
     )
 
     @Suppress("DEPRECATION")
@@ -86,6 +90,8 @@ object CropImage {
       wholeImageRect = `in`.readParcelable<Parcelable>(Rect::class.java.classLoader) as Rect?,
       rotation = `in`.readInt(),
       sampleSize = `in`.readInt(),
+      flipHorizontal = `in`.readInt() != 0,
+      flipVertical = `in`.readInt() != 0,
     )
 
     override fun writeToParcel(dest: Parcel, flags: Int) {
@@ -97,6 +103,8 @@ object CropImage {
       dest.writeParcelable(wholeImageRect, flags)
       dest.writeInt(rotation)
       dest.writeInt(sampleSize)
+      dest.writeInt(if (flipHorizontal) 1 else 0)
+      dest.writeInt(if (flipVertical) 1 else 0)
     }
 
     override fun describeContents(): Int = 0

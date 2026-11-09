@@ -43,7 +43,8 @@ object ThemeManager {
     fun refreshThemes() {
         customThemes.clear()
         customThemes.addAll(ThemeFilesManager.listThemes())
-        activeTheme = evaluateActiveTheme()
+        _activeTheme = evaluateActiveTheme()
+        fireChange()
     }
 
     /**
@@ -61,6 +62,20 @@ object ThemeManager {
         }
 
     private var isDarkMode = false
+    private var nightOverride: Boolean? = null
+    val isNightMode: Boolean
+        get() = if (prefs.followSystemDayNightTheme.getValue()) nightOverride ?: isDarkMode
+            else prefs.manualNightMode ?: prefs.normalModeTheme.getValue().isDark
+
+    fun toggleNightMode() {
+        val target = !isNightMode
+        val theme = (if (target) prefs.darkModeTheme else prefs.lightModeTheme).getValue()
+        prefs.manualNightMode = target
+        if (prefs.followSystemDayNightTheme.getValue()) nightOverride = target
+        else prefs.normalModeTheme.setValue(theme)
+        _activeTheme = theme
+        fireChange()
+    }
 
     private val onChangeListeners = WeakHashSet<OnThemeChangeListener>()
 
@@ -81,6 +96,7 @@ object ThemeManager {
     fun saveTheme(theme: Theme.Custom) {
         // 同名主题可能换了背景图，缓存中的旧图必须失效
         theme.backgroundImage?.croppedFilePath?.let { ThemeBackgroundCache.invalidate(it) }
+        theme.backgroundImage?.srcFilePath?.let { ThemeBackgroundCache.invalidate(it) }
         ThemeFilesManager.saveThemeFiles(theme)
         customThemes.indexOfFirst { it.name == theme.name }.also {
             if (it >= 0) customThemes[it] = theme else customThemes.add(0, theme)
@@ -93,6 +109,7 @@ object ThemeManager {
     fun deleteTheme(name: String) {
         customThemes.find { it.name == name }?.also {
             it.backgroundImage?.croppedFilePath?.let { path -> ThemeBackgroundCache.invalidate(path) }
+            it.backgroundImage?.srcFilePath?.let { path -> ThemeBackgroundCache.invalidate(path) }
             ThemeFilesManager.deleteThemeFiles(it)
             customThemes.remove(it)
         }
@@ -107,12 +124,13 @@ object ThemeManager {
         // `activateTheme`'s setter would also trigger `fireChange()` when theme actually changes.
         // write to backing property directly to avoid unnecessary `fireChange()`
         _activeTheme = theme
+        prefs.manualNightMode = theme.isDark
         prefs.normalModeTheme.setValue(theme)
     }
 
     private fun evaluateActiveTheme(): Theme {
         return if (prefs.followSystemDayNightTheme.getValue()) {
-            if (isDarkMode) prefs.darkModeTheme else prefs.lightModeTheme
+            if (isNightMode) prefs.darkModeTheme else prefs.lightModeTheme
         } else {
             prefs.normalModeTheme
         }.getValue()
@@ -121,7 +139,9 @@ object ThemeManager {
     @Keep
     private val onThemePrefsChange = ManagedPreference.OnChangeListener<Any> { key, _ ->
         if (prefs.dayNightModePrefNames.contains(key)) {
-            activeTheme = evaluateActiveTheme()
+            nightOverride = null
+            _activeTheme = evaluateActiveTheme()
+            fireChange()
         } else {
             fireChange()
         }
@@ -129,6 +149,7 @@ object ThemeManager {
 
     fun init(configuration: Configuration) {
         isDarkMode = configuration.isDarkMode()
+        nightOverride = null
         // fire all `OnThemeChangedListener`s on theme preferences change
         prefs.managedPreferences.values.forEach {
             it.registerOnChangeListener(onThemePrefsChange)
@@ -137,8 +158,13 @@ object ThemeManager {
     }
 
     fun onSystemDarkModeChange(isDark: Boolean) {
+        val changed = isDarkMode != isDark
         isDarkMode = isDark
-        activeTheme = evaluateActiveTheme()
+        if (changed) {
+            nightOverride = null
+            _activeTheme = evaluateActiveTheme()
+            fireChange()
+        }
     }
 
 }

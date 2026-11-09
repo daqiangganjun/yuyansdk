@@ -135,7 +135,7 @@ class DoubaoSpeechProvider : SpeechProvider {
         @Synchronized
         override fun sendAudio(pcm: ByteArray): Boolean {
             if (!ready || closed || finished) return false
-            if ((socket?.queueSize() ?: 0) > 256 * 1024) {
+            if ((socket?.queueSize() ?: 0) > MAX_QUEUE_BYTES) {
                 fail(SpeechFailure(SpeechFailureKind.NETWORK)); return false
             }
             val sent = socket?.send(DoubaoProtocol.audio(pcm, sequence++, false).toByteString()) == true
@@ -218,6 +218,8 @@ class DoubaoSpeechProvider : SpeechProvider {
 
     companion object {
         const val ENDPOINT = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+        /** 连接就绪时会一次补发连接前暂存的录音（最多约 20 秒，640 KB），发送队列上限须容纳这一段 */
+        private const val MAX_QUEUE_BYTES = 1024 * 1024
         private val client by lazy {
             OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).writeTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS).pingInterval(20, TimeUnit.SECONDS).build()

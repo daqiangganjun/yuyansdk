@@ -39,6 +39,7 @@ class EnvironmentSingleton private constructor() {
     var candidateTextSize = 0f // 候选词字体大小
     var clipboardTextSize = 0f // 剪贴板、常用语的条目字体大小
     var composingTextSize = 0f // 候选词字体大小
+    var floatMaxAreaHeight = 0 // 悬浮键盘可用的窗口高度上限，0 表示尚未测得
     var isLandscape = false //键盘是否横屏
     var keyXMargin = 0 //键盘按键水平间距
     var keyYMargin = 0 //键盘按键垂直间距
@@ -70,7 +71,6 @@ class EnvironmentSingleton private constructor() {
         // 按键 + 后续高度，值是相对于竖屏宽度，横屏高度。
         if(isLandscape && !keyboardModeFloat){
             inputAreaWidth = mScreenWidth
-            skbWidth = (skbWidth * 0.7).toInt()
             keyboardHeightRatio = AppPrefs.getInstance().internal.keyboardHeightRatioLandscape.getValue()
             candidatesHeightRatio = AppPrefs.getInstance().internal.candidatesHeightRatioLandscape.getValue()
         } else {
@@ -90,6 +90,10 @@ class EnvironmentSingleton private constructor() {
         // 内边距与图标决定；此处放低下限，避免它反过来限制底栏变矮
         heightForFullDisplayBar = (heightForCandidatesArea * 0.25f).toInt()
         heightForKeyboardMove = (heightForCandidatesArea * 0.2f).toInt()
+        if (keyboardModeFloat && floatMaxAreaHeight > 0) {
+            val overflow = skbHeight + heightForCandidatesArea + heightForKeyboardMove - floatMaxAreaHeight
+            if (overflow > 0) skbHeight = (skbHeight - overflow).coerceAtLeast(skbHeight / 2)
+        }
 
         val keyboardFontSizeRatio = prefs.keyboardFontSize.getValue()/100f
         // 字号基准取默认高度而非当前高度：否则拉伸键盘会连带改变字号，

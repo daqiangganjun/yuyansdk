@@ -115,28 +115,35 @@ open class BaseContainer(@JvmField var mContext: Context, @JvmField protected va
     private var initialTouchY = 0f
     private var rightPaddingValue = 0  // 右侧边距
     private var bottomPaddingValue = 0  // 底部边距
-    private var mSkbRootHeight = 0  // 键盘高度
-    private var mSkbRootWidth = 0  // 键盘宽度
+    private var moveStartBottomPadding = 0
+    private var moveMaxRight = 0  // 右边距上限
+    private var moveMaxBottom = 0  // 底边距上限
     private fun onMoveKeyboardEvent(event: MotionEvent?): Boolean {
         when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
-                bottomPaddingValue = mBottomPaddingKey.getValue()
-                rightPaddingValue = mRightPaddingKey.getValue()
+                if (EnvironmentSingleton.instance.keyboardModeFloat) {
+                    val (maxRight, maxBottom) = inputView.floatKeyboardOffsetLimits()
+                    moveMaxRight = maxRight
+                    moveMaxBottom = maxBottom
+                    bottomPaddingValue = inputView.paddingBottom.coerceIn(0, maxBottom)
+                    rightPaddingValue = inputView.paddingRight.coerceIn(0, maxRight)
+                } else {
+                    moveMaxBottom = (EnvironmentSingleton.instance.mScreenHeight -
+                        (inputView.mSkbRoot.height - inputView.mSkbRoot.paddingBottom)).coerceAtLeast(0)
+                    moveMaxRight = (inputView.width - inputView.mSkbRoot.width).coerceAtLeast(0)
+                    bottomPaddingValue = mBottomPaddingKey.getValue()
+                    rightPaddingValue = mRightPaddingKey.getValue()
+                }
+                moveStartBottomPadding = bottomPaddingValue
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
-                mSkbRootHeight = inputView.mSkbRoot.height
-                mSkbRootWidth = inputView.mSkbRoot.width
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx: Float = event.rawX - initialTouchX
                 val dy: Float = event.rawY - initialTouchY
                 if(dx.absoluteValue > 10) {
-                    rightPaddingValue -= dx.toInt()
-                    rightPaddingValue = if(rightPaddingValue < 0) 0
-                    else if(rightPaddingValue > inputView.width - mSkbRootWidth) {
-                        inputView.width - mSkbRootWidth
-                    } else rightPaddingValue
+                    rightPaddingValue = (rightPaddingValue - dx.toInt()).coerceIn(0, moveMaxRight)
                     initialTouchX = event.rawX
                     if(EnvironmentSingleton.instance.keyboardModeFloat) {
                         inputView.rightPadding = rightPaddingValue
@@ -144,12 +151,9 @@ open class BaseContainer(@JvmField var mContext: Context, @JvmField protected va
                         inputView.mSkbRoot.rightPadding = rightPaddingValue
                     }
                 }
-                if(dy.absoluteValue > 10 ) {
-                    // 上界不能用 inputView.height：其为 wrap_content，高度恒等于
-                    // mSkbRoot.height + bottomPadding，会使上界恒等于当前值而无法上移
-                    val maxBottom = (EnvironmentSingleton.instance.mScreenHeight - mSkbRootHeight).coerceAtLeast(0)
-                    bottomPaddingValue = (bottomPaddingValue - dy.toInt()).coerceIn(0, maxBottom)
-                    initialTouchY = event.rawY
+                val nextBottom = (moveStartBottomPadding - dy.roundToInt()).coerceIn(0, moveMaxBottom)
+                if (nextBottom != bottomPaddingValue) {
+                    bottomPaddingValue = nextBottom
                     if(EnvironmentSingleton.instance.keyboardModeFloat) {
                         inputView.bottomPadding = bottomPaddingValue
                     } else {

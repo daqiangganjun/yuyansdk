@@ -51,18 +51,20 @@ import splitties.bitflags.hasFlag
 class ImeService : InputMethodService() {
     private var voiceInput: VoiceInputController? = null
 
-    fun startVoiceInput() {
+    fun startVoiceInput(coverBottomInWindow: Int = -1) {
         val view = mInputView ?: return
         if (voiceInput == null) {
-            voiceInput = VoiceInputController(this, view.mSkbRoot,
+            voiceInput = VoiceInputController(this, view,
                 prepareInput = { view.auxiliaryPanel.cancelFunctionKeyInput(); view.resetToIdleState() },
-                commitResult = view::commitExternalText)
+                commitResult = view::commitExternalText,
+                anchor = view.mSkbRoot)
         }
-        voiceInput?.start()
+        voiceInput?.start(coverBottomInWindow)
     }
 
     fun finishVoiceInput() { voiceInput?.finish() }
     fun cancelVoiceInput() { voiceInput?.cancel() }
+    fun setVoiceCancelArmed(armed: Boolean) { voiceInput?.setCancelArmed(armed) }
     private var isHardwareKeyboard = false
     private var isSoftKeyboard = false
     // 视图由系统按需创建，键盘事件可能早于视图创建到达，故使用可空类型统一防护
@@ -128,10 +130,11 @@ class ImeService : InputMethodService() {
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         cancelVoiceInput()
         val view = mInputView
-        val resumeFlowerInput = restarting && view?.wantsFlowerSourceInput == true
+        val resumeClipboardSearch = restarting && view?.isClipboardSearchActive == true
+        val resumeFlowerInput = restarting && !resumeClipboardSearch && view?.wantsFlowerSourceInput == true
         val routeRevision = view?.flowerInputRouteRevision ?: 0L
         if (resumeFlowerInput) view?.resetToIdleState()
-        mInputView?.finishAuxiliaryInput()
+        mInputView?.finishAuxiliaryInput(preserveClipboardSearch = resumeClipboardSearch)
         YuyanEmojiCompat.setEditorInfo(editorInfo)
         handleHardwareKeyboard()
         if (isHardwareKeyboard)mCandidateView?.onStartInput(editorInfo, restarting)
@@ -307,9 +310,28 @@ class ImeService : InputMethodService() {
     override fun onWindowShown() {
         if (isSoftKeyboard) mInputView?.onWindowShown()
         super.onWindowShown()
+        if (isSoftKeyboard) {
+            com.yuyan.imemodule.data.transfer.TransferCoordinator.onKeyboardShown(this)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                val coordinator = com.yuyan.imemodule.data.transfer.TransferCoordinator
+                val details = coordinator.updateDetails(this)
+                val token = window?.window?.decorView?.windowToken
+                if (coordinator.keyboardVisible && com.yuyan.inputmethod.EngineRuntime.isReady && details != null && token != null) {
+                    val dialog = android.app.AlertDialog.Builder(this).setTitle("词库已更新")
+                        .setMessage(details).setPositiveButton("知道了", null).create()
+                    dialog.window?.apply {
+                        attributes = attributes.apply { this.token = token }
+                        setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG)
+                        addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                    }
+                    runCatching { dialog.show(); coordinator.acknowledgeDetails(this) }
+                }
+            }, 300)
+        }
     }
 
     override fun onWindowHidden() {
+        com.yuyan.imemodule.data.transfer.TransferCoordinator.onKeyboardHidden(this)
         cancelVoiceInput()
         if(isSoftKeyboard) mInputView?.onWindowHidden()
         super.onWindowHidden()
