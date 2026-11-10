@@ -27,6 +27,7 @@ class InputSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().in
     }
 
     private val chineseFanTi = AppPrefs.getInstance().input.chineseFanTi
+    private val cnEnInput = AppPrefs.getInstance().input.cnEnInput
     private val emojiInput = AppPrefs.getInstance().input.emojiInput
     private val doublePYSchemaMode = AppPrefs.getInstance().input.doublePYSchemaMode
 
@@ -40,6 +41,7 @@ class InputSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().in
     override fun onStart() {
         super.onStart()
         chineseFanTi.registerOnChangeListener(switchKeyListener)
+        cnEnInput.registerOnChangeListener(switchKeyListener)
         emojiInput.registerOnChangeListener(switchKeyListener)
         doublePYSchemaMode.registerOnChangeListener(schemaModeListener)
     }
@@ -47,6 +49,7 @@ class InputSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().in
     override fun onStop() {
         super.onStop()
         chineseFanTi.unregisterOnChangeListener(switchKeyListener)
+        cnEnInput.unregisterOnChangeListener(switchKeyListener)
         emojiInput.unregisterOnChangeListener(switchKeyListener)
         doublePYSchemaMode.unregisterOnChangeListener(schemaModeListener)
     }

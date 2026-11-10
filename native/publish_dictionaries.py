@@ -36,6 +36,7 @@ def main():
     descriptions = {}
     recipe = hashlib.sha256()
     for path in (NATIVE / "prepare_assets.py", NATIVE / "publish_dictionaries.py", NATIVE / "data/selfopt_stroke.lua",
+                 NATIVE / "data/selfopt_pure_chinese.lua",
                  NATIVE.parent / "src/main/java/com/yuyan/inputmethod/util/LX17PinYinUtils.kt"):
         recipe.update(path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8"))
     for repo in lock["repositories"]:
@@ -75,7 +76,8 @@ def main():
     root = generated / "dictionary"
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    index = {"format": 1, "compatibility": "selfopt-1", "minAppVersion": 50300, "recipe": recipe.hexdigest(), "packages": []}
+    # 5.6.0 起方案引用 selfopt_pure_chinese.lua，旧版既无法放行雾凇包中的该脚本，也不会下发对应选项
+    index = {"format": 1, "compatibility": "selfopt-1", "minAppVersion": 50600, "recipe": recipe.hexdigest(), "packages": []}
     for family in ("frost", "ice"):
         revision = next(repo["revision"] for repo in lock["repositories"] if repo["name"] == "rime-" + family)
         metadata = {"format": 1, "family": family, "revision": revision, "compatibility": "selfopt-1",
@@ -92,7 +94,9 @@ def main():
                 relative = path.relative_to(root).as_posix()
                 ice_file = (path.name.startswith("ice_") or path.name.startswith("selfopt_ice_") or
                             path.name == "rime_ice.dict.yaml" or relative.startswith("licenses/rime-ice/"))
-                if relative in ("bundle.json", "default.yaml", "sources.json") or (family == "ice") != ice_file:
+                # 雾凇方案引用该过滤器，与旧版白霜包组合时须由雾凇包自带
+                shared_file = relative == prepare_assets.PURE_CHINESE_LUA
+                if relative in ("bundle.json", "default.yaml", "sources.json") or ((family == "ice") != ice_file and not shared_file):
                     continue
                 put(relative, path.read_bytes())
             put("bundle.json", json.dumps(metadata))

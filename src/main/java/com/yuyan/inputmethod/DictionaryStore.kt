@@ -3,6 +3,7 @@ package com.yuyan.inputmethod
 import android.content.Context
 import com.yuyan.imemodule.data.transfer.SyncProtocol
 import com.yuyan.imemodule.data.transfer.TransferFiles
+import com.yuyan.inputmethod.dictionary.MobileDictionaryRecipe
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import okhttp3.OkHttpClient
@@ -209,8 +210,9 @@ object DictionaryStore {
                 require(paths.add(name) && paths.size < 20000 && entry.size >= 0) { "Invalid dictionary entries" }
                 size += entry.size
                 require(size <= TransferFiles.MAX_EXPANDED_BYTES) { "Dictionary expands beyond size limit" }
+                // 雾凇包自带「中英混输」过滤脚本，组合时白霜包已有同名文件则以白霜包为准
                 if (pkg.family == "ice") require(name == "bundle.json" || name == "sources.json" ||
-                    name == "rime_ice.dict.yaml" || name.startsWith("ice_") ||
+                    name == "rime_ice.dict.yaml" || name.startsWith("ice_") || name == MobileDictionaryRecipe.PURE_CHINESE_LUA ||
                     name.startsWith("templates/selfopt_ice_") || name.startsWith("licenses/rime-ice/")) { "Optional dictionary overwrites shared files" }
             }
         }

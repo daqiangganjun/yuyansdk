@@ -42,6 +42,30 @@ object SkbMenuCache {
         return barMenus().any { it.name == name }
     }
 
+    /** 固定菜单项到候选栏末位；列表为反向布局，末位显示在最左 */
+    fun addBarMenu(name: String) {
+        val dao = DataBaseKT.instance.skbFunDao()
+        dao.insert(SkbFun(name = name, isKeep = 1, position = dao.getMaxBarMenuPosition() + 1))
+        invalidate()
+    }
+
+    fun removeBarMenu(name: String) {
+        DataBaseKT.instance.skbFunDao().deleteBarMenu(name)
+        invalidate()
+    }
+
+    /**
+     * 按 [names] 的顺序重排候选栏菜单，整批放进单个事务。只更新已有记录，
+     * 不在表中的名称（如剪贴板页临时拼入的操作项）不会因此被写入。
+     */
+    fun persistBarOrder(names: List<String>) {
+        val dao = DataBaseKT.instance.skbFunDao()
+        DataBaseKT.instance.runInTransaction {
+            names.forEachIndexed { index, name -> dao.update(SkbFun(name = name, isKeep = 1, position = index)) }
+        }
+        invalidate()
+    }
+
     fun invalidate() {
         synchronized(this) {
             barMenus = null

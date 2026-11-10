@@ -17,6 +17,12 @@ interface SkbFunDao : BaseDao<SkbFun> {
     @Query("select * from skbfun where name = :name AND isKeep = 1")
     fun getBarMenu(name: String):SkbFun?
 
+    @Query("select ifnull(max(position), -1) from skbfun where isKeep = 1")
+    fun getMaxBarMenuPosition(): Int
+
+    @Query("delete from skbfun where name = :name and isKeep = 1")
+    fun deleteBarMenu(name: String)
+
     @Query("delete from skbfun")
     fun deleteAll()
 }

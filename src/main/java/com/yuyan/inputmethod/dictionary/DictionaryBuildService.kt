@@ -15,12 +15,14 @@ import com.yuyan.imemodule.data.transfer.SyncProtocol
 import com.yuyan.imemodule.data.transfer.TransferFiles
 import com.yuyan.inputmethod.DictionaryPackage
 import com.yuyan.inputmethod.DictionaryStore
+import com.yuyan.inputmethod.EngineRuntime
 import com.yuyan.inputmethod.SchemaRegistry
 import com.yuyan.inputmethod.core.Rime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.zip.ZipInputStream
 
 @Serializable
 data class DictionaryBuildRequest(
@@ -93,6 +95,11 @@ class DictionaryBuildService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) { cancel("系统结束了耗时更新任务，原词库保持不变，可稍后重试") }
     override fun onDestroy() { worker.shutdownNow(); super.onDestroy(); Process.killProcess(Process.myPid()) }
 
+    /** 读取应用内置词库包中的单个文件，用于向手机端构建的词库补齐应用自有的脚本 */
+    private fun bundledFile(path: String): ByteArray? = assets.open("rime-selfopt.zip").use { input ->
+        ZipInputStream(input).use { zip -> generateSequence { zip.nextEntry }.firstOrNull { it.name == path }?.let { zip.readBytes() } }
+    }
+
     private fun execute(work: File) {
         val request = SyncProtocol.json.decodeFromString<DictionaryBuildRequest>(File(work, "request.json").readText())
         require(request.family in setOf("frost", "ice")) { "Invalid build family" }
@@ -117,7 +124,7 @@ class DictionaryBuildService : Service() {
             TransferFiles.extract(DictionaryStore.materialize(this, packages.getValue("frost")).inputStream(), baseline)
             phase = "资源适配"
             report("正在适配${request.rule.name}输入方案")
-            val recipe = MobileDictionaryRecipe(source, baseline, File(work, "package"))
+            val recipe = MobileDictionaryRecipe(source, baseline, File(work, "package"), bundledFile(MobileDictionaryRecipe.PURE_CHINESE_LUA))
             recipe.build()
             changed = recipe.archive(File(work, "dictionary.zip")).copy(ruleHash = request.ruleHash)
             DictionaryStore.validateArchive(File(work, "dictionary.zip"), changed)
@@ -156,7 +163,9 @@ class DictionaryBuildService : Service() {
                 schema == "selfopt_stroke" -> "HX" to "二"
                 else -> "ni" to "你"
             }
-            repeat(2) {
+            // 第二轮按「中英混输」关闭运行，确认过滤脚本能加载且不会滤掉中文候选
+            repeat(2) { round ->
+                Rime.setRimeOption(EngineRuntime.PURE_CHINESE_OPTION, round == 1)
                 Rime.clearRimeComposition()
                 keys.forEach { Rime.processRimeKey(it.code, 0) }
                 val candidates = Rime.getRimeContext()?.candidates.orEmpty()

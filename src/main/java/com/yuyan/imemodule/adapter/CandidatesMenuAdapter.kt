@@ -36,20 +36,50 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
     private var mOnItemClickListener: OnRecyclerItemClickListener? = null
     private var itemHeight: Int = (instance.heightForCandidatesArea * 0.8f).toInt()
     private var mMenuPadding: Int = (instance.heightForCandidatesArea * 0.05f).toInt()
-    var items: List<SkbFunItem> = emptyList()
+    private val menuItems = ArrayList<SkbFunItem>()
+    var items: List<SkbFunItem>
+        get() = menuItems
         set(value) {
-            val diffResult = DiffUtil.calculateDiff(MyDiffCallback(field, value))
-            field = value
+            val diffResult = DiffUtil.calculateDiff(MyDiffCallback(menuItems.toList(), value))
+            menuItems.clear()
+            menuItems.addAll(value)
             diffResult.dispatchUpdatesTo(this)
         }
+
+    /** 定制状态：菜单项带减号角标，点按即从候选栏移除，长按可拖动排序 */
+    var editMode = false
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+    var onRemoveListener: ((SkbFunItem, Int) -> Unit)? = null
+
     fun setOnItemClickLitener(mOnItemClickLitener: OnRecyclerItemClickListener?) {
         mOnItemClickListener = mOnItemClickLitener
     }
 
+    fun snapshot(): List<SkbFunItem> = menuItems.toList()
+
+    fun moveItem(fromPosition: Int, toPosition: Int): Boolean {
+        if (fromPosition !in menuItems.indices || toPosition !in menuItems.indices) return false
+        menuItems.add(toPosition, menuItems.removeAt(fromPosition))
+        notifyItemMoved(fromPosition, toPosition)
+        return true
+    }
+
+    fun removeItem(position: Int) {
+        if (position !in menuItems.indices) return
+        menuItems.removeAt(position)
+        notifyItemRemoved(position)
+    }
+
     inner class SymbolHolder(view: View) : RecyclerView.ViewHolder(view) {
         var entranceIconImageView: ImageView? = null
+        var removeImageView: ImageView? = null
         init {
             entranceIconImageView = itemView.findViewById(R.id.candidates_menu_item)
+            removeImageView = itemView.findViewById(R.id.candidates_menu_remove)
         }
     }
 
@@ -57,10 +87,10 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
         return SymbolHolder(inflater.inflate(R.layout.sdk_item_recyclerview_candidates_menu, parent, false))
     }
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int = menuItems.size
 
     override fun onBindViewHolder(holder: SymbolHolder, position: Int) {
-        val item = items[position]
+        val item = menuItems[position]
         holder.itemView.tag = item.skbMenuMode
         holder.itemView.isSelected = isSettingsMenuSelect(item)
         holder.entranceIconImageView?.contentDescription = item.funName
@@ -76,14 +106,26 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
         holder.entranceIconImageView?.background = if (ThemeManager.prefs.keyBorder.getValue() || selected ||
             activeTheme is com.yuyan.imemodule.data.theme.Theme.Custom && (activeTheme as com.yuyan.imemodule.data.theme.Theme.Custom).backgroundImage != null)
             ThemeControls.background(activeTheme, selected, 0f, oval = true) else null
-        if (mOnItemClickListener != null) {
-            holder.itemView.setOnClickListener { v: View? ->
-                mOnItemClickListener!!.onItemClick(this, v, position)
+        holder.removeImageView?.apply {
+            visibility = if (editMode) View.VISIBLE else View.GONE
+            if (editMode) {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(activeTheme.keyBackgroundColor)
+                }
+                drawable?.setTint(activeTheme.accentKeyBackgroundColor)
             }
+        }
+        // 拖动排序后视图不会重新绑定，下标须在点击时现取
+        holder.itemView.setOnClickListener { v: View ->
+            val current = holder.bindingAdapterPosition
+            val clicked = menuItems.getOrNull(current) ?: return@setOnClickListener
+            if (editMode) onRemoveListener?.invoke(clicked, current)
+            else mOnItemClickListener?.onItemClick(this, v, current)
         }
     }
 
-    fun getMenuMode(position: Int): SkbMenuMode? = if(items.size > position)items[position].skbMenuMode else null
+    fun getMenuMode(position: Int): SkbMenuMode? = menuItems.getOrNull(position)?.skbMenuMode
 
     private fun isSettingsMenuSelect(data: SkbFunItem): Boolean {
         val rimeValue = AppPrefs.getInstance().internal.pinyinModeRime.getValue()
@@ -122,9 +164,12 @@ class CandidatesMenuAdapter(context: Context?) : RecyclerView.Adapter<Candidates
     class MyDiffCallback(private val oldList: List<SkbFunItem>, private val newList: List<SkbFunItem>) : DiffUtil.Callback() {
         override fun getOldListSize(): Int = oldList.size
         override fun getNewListSize(): Int = newList.size
-        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean = true
+        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean =
+            oldList[oldItemPosition].skbMenuMode == newList[newItemPosition].skbMenuMode
         override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-            return oldList[oldItemPosition].funName == newList[newItemPosition].funName
+            val oldItem = oldList[oldItemPosition]
+            val newItem = newList[newItemPosition]
+            return oldItem.funName == newItem.funName && oldItem.funImgResource == newItem.funImgResource
         }
     }
 

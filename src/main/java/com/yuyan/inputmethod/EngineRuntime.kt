@@ -15,6 +15,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Callable
 
 object EngineRuntime {
+    /**
+     * 「中英混输」关闭时置真，方案中的 selfopt_pure_chinese 过滤器据此丢弃含英文字母的候选。
+     * 取反向语义是因为 librime 未设置的选项一律视为假，应用尚未同步选项时仍保持中英混输。
+     */
+    const val PURE_CHINESE_OPTION = "pure_chinese"
+
     enum class Phase { Preparing, Ready, Failed }
     data class Status(val phase: Phase, val message: String)
 
@@ -265,6 +271,7 @@ object EngineRuntime {
         Rime.setRimeOption("ascii_mode", false)
         Rime.setRimeOption("traditionalization", AppPrefs.getInstance().input.chineseFanTi.getValue())
         Rime.setRimeOption("emoji", AppPrefs.getInstance().input.emojiInput.getValue())
+        Rime.setRimeOption(PURE_CHINESE_OPTION, !AppPrefs.getInstance().input.cnEnInput.getValue())
         Rime.setRimePageSize(100)
     }
 

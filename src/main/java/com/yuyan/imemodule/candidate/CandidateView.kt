@@ -115,28 +115,50 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
         bottomPadding = if(bottom > diffHight) bottom - diffHight else bottom + instance.heightForCandidatesArea
     }
 
+    // Ctrl+Space 的按下已被消费，抬起时据此切换语言，与先松开哪个键无关
+    private var languageSwitchPending = false
+
     fun processKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if(InputModeSwitcher.isEnglish) return false
-        // 字母、数字、符号、空格
-        if (keyCode >= KeyEvent.KEYCODE_A && keyCode <= KeyEvent.KEYCODE_Z) return true
-        if (keyCode >= KeyEvent.KEYCODE_0 && keyCode <= KeyEvent.KEYCODE_9) return true
-        if (keyCode == KeyEvent.KEYCODE_SPACE) return true
-        if (keyCode == KeyEvent.KEYCODE_APOSTROPHE || keyCode == KeyEvent.KEYCODE_SEMICOLON) return true   // KEYCODE_SEMICOLON在双拼中使用
-        // 编辑键
-        if (keyCode == KeyEvent.KEYCODE_DEL) return true
-        if (keyCode == KeyEvent.KEYCODE_ENTER) return true
-        if (keyCode == KeyEvent.KEYCODE_TAB) return true
-        // 方向键
-        if (keyCode >= KeyEvent.KEYCODE_DPAD_UP && keyCode <= KeyEvent.KEYCODE_DPAD_RIGHT) return true
-        return false
+        languageSwitchPending = keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed
+        return languageSwitchPending || isChineseInputKey(event)
     }
 
     fun processKeyUp(event: KeyEvent): Boolean {
-        if (!EngineRuntime.isReady && event.keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) return true
+        val keyCode = event.keyCode
+        if (keyCode == KeyEvent.KEYCODE_SPACE && languageSwitchPending) {
+            languageSwitchPending = false
+            switchLanguage()
+            return true
+        }
+        if (!isChineseInputKey(event)) return false
+        if (!EngineRuntime.isReady && keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) return true
         InputModeSwitcher.resetCharCase()
-        return if (processFunctionKeys(event)) true
-        else if (InputModeSwitcher.isChinese) processInput(event)
-        else  false
+        // 按下已被消费，未处理的按键（如 Tab）需原样转发，否则宿主收不到
+        if (!processFunctionKeys(event) && !processInput(event)) sendKeyEvent(keyCode)
+        return true
+    }
+
+    /**
+     * 本界面只在中文模式下处理按键，Alt 组合键与 Ctrl、Shift 一样交给宿主。按下与抬起须按同一判定决定是否消费：
+     * 只吞按下会丢键，按下已交给宿主而抬起再转发则重复输入
+     */
+    private fun isChineseInputKey(event: KeyEvent): Boolean {
+        if (!InputModeSwitcher.isChinese || event.isAltPressed) return false
+        val keyCode = event.keyCode
+        return keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z || keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ||
+            keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_CENTER || when (keyCode) {
+                // KEYCODE_SEMICOLON在双拼中使用
+                KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_APOSTROPHE, KeyEvent.KEYCODE_SEMICOLON,
+                KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_CLEAR -> true
+                else -> false
+            }
+    }
+
+    private fun switchLanguage() {
+        if (!DecodingInfo.isCandidatesEmpty && !(DecodingInfo.isAssociate && !mSkbCandidatesBarView.isActiveCand())) chooseAndUpdate()
+        InputModeSwitcher.switchModeForUserKey(InputModeSwitcher.USER_KEYCODE_LANG)
+        resetToIdleState()
+        Toast.makeText(context, if(InputModeSwitcher.isEnglish)"语燕SelfOpt-英文" else "语燕SelfOpt-拼音", Toast.LENGTH_LONG).show()
     }
 
     private fun processFunctionKeys(event: KeyEvent): Boolean {
@@ -148,15 +170,10 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
                 } else {
                     chooseAndUpdate()
                 }
-                if(keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed ){
-                    InputModeSwitcher.switchModeForUserKey(InputModeSwitcher.USER_KEYCODE_LANG)
-                    resetToIdleState()
-                    Toast.makeText(context, if(InputModeSwitcher.isEnglish)"语燕SelfOpt-英文" else "语燕SelfOpt-拼音", Toast.LENGTH_LONG).show()
-                }
                 true
             }
             KeyEvent.KEYCODE_CLEAR -> {
-                resetToIdleState()
+                if (DecodingInfo.isCandidatesEmpty) sendKeyEvent(keyCode) else resetToIdleState()
                 true
             }
             KeyEvent.KEYCODE_ENTER -> {
@@ -168,6 +185,14 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                 if (!DecodingInfo.isCandidatesEmpty) {
                     mSkbCandidatesBarView.updateActiveCandidateNo(keyCode)
+                } else {
+                    sendKeyEvent(keyCode)
+                }
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!DecodingInfo.isCandidatesEmpty) {
+                    mSkbCandidatesBarView.pageChange(keyCode)
                 } else {
                     sendKeyEvent(keyCode)
                 }
@@ -192,7 +217,14 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
                 true
             }
             label.isDigitsOnly() ->{
-                chooseAndUpdate(label.toInt() - 1)
+                val position = mSkbCandidatesBarView.getVisibleCandPosition(label.toInt())
+                if (position >= 0) {
+                    chooseAndUpdate(position)
+                } else if (DecodingInfo.isCandidatesEmpty || DecodingInfo.isAssociate) {
+                    // 没有可选的候选时数字照常输入；组合中按到无对应候选的数字则忽略，避免误上屏
+                    if (DecodingInfo.isAssociate) resetToIdleState()
+                    sendKeyEvent(keyCode)
+                }
                 true
             }
             Character.isLetter(keyChar) || keyCode == KeyEvent.KEYCODE_APOSTROPHE || keyCode == KeyEvent.KEYCODE_SEMICOLON -> {

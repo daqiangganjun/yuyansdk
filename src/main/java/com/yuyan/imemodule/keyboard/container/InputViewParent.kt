@@ -21,6 +21,11 @@ class InputViewParent @JvmOverloads constructor(context: Context?, attrs: Attrib
         mLastContainer = null
     }
 
+    fun removeContainer(child: View) {
+        if (child === mLastContainer) mLastContainer = null
+        removeView(child)
+    }
+
     fun showView(child: View?) {
         if (child == null) return
         (child as? InputBaseContainer)?.updateStates()

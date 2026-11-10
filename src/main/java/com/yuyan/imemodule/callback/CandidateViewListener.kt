@@ -13,4 +13,5 @@ interface CandidateViewListener {
     fun onClickClearCandidate()  //清空候选词
     fun onClickClearClipBoard() //清空剪切板
     fun onPopupVisibilityChanged(visible: Boolean) = Unit
+    fun onBarMenuChanged() = Unit  // 候选栏顶部菜单被移除
 }

@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.RelativeLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.OnScrollListener
@@ -21,7 +22,11 @@ import com.yuyan.imemodule.adapter.CandidatesMenuAdapter
 import com.yuyan.imemodule.callback.CandidateViewListener
 import com.yuyan.imemodule.data.candidateToolbarItems
 import com.yuyan.imemodule.data.menuSkbFunsPreset
+import com.yuyan.imemodule.data.theme.Theme
+import com.yuyan.imemodule.data.theme.ThemeControls
+import com.yuyan.imemodule.data.theme.ThemeManager
 import com.yuyan.imemodule.database.SkbMenuCache
+import com.yuyan.imemodule.entity.SkbFunItem
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.KeyboardOneHandedMod
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
@@ -31,7 +36,9 @@ import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.keyboard.container.CandidatesContainer
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.keyboard.container.InputBaseContainer
+import com.yuyan.imemodule.keyboard.container.SettingsContainer
 import com.yuyan.imemodule.manager.layout.CustomLinearLayoutManager
+import com.yuyan.imemodule.utils.DevicesUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -55,6 +62,10 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
     private lateinit var mCandidatesMenuAdapter: CandidatesMenuAdapter
     private lateinit var candidatesData: LinearLayout //候选词视图
     private var activeCandNo:Int = 0
+    private var barMenuTouchHelper: ItemTouchHelper? = null
+    private var isBarMenuEditMode = false
+    private var isBarMenuDragging = false
+    private var barMenuOrderChanged = false
     private var handwritingMessage: String? = null
     private val handwritingStatus = TextView(context).apply {
         gravity = Gravity.CENTER_VERTICAL
@@ -173,14 +184,16 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
                 val skbMenuMode = mCandidatesMenuAdapter.getMenuMode(position)
                 if (skbMenuMode != null) onClickMenu(skbMenuMode, view)
             }
+            mCandidatesMenuAdapter.onRemoveListener = { item, position -> removeBarMenuItem(item, position) }
             mRVContainerMenu.setAdapter(mCandidatesMenuAdapter)
             mMenuRightArrowBtn = ImageView(context).apply {
                 isClickable = true
                 isEnabled = true
                 setImageResource(R.drawable.ic_menu_arrow_down)
             }
+            // 定制状态下该按钮显示为「完成」，点按退出设置面板并结束编辑
             mMenuRightArrowBtn.setOnClickListener { _: View ->
-                mCvListener.onClickMenu(SkbMenuMode.CloseSKB)
+                mCvListener.onClickMenu(if (isBarMenuEditMode) SkbMenuMode.SettingsMenu else SkbMenuMode.CloseSKB)
             }
             mCandidatesMenuContainer.addView(mIvMenuSetting)
             mCandidatesMenuContainer.addView(mRVContainerMenu)
@@ -195,6 +208,77 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
         mMenuRightArrowBtn.layoutParams = LinearLayout.LayoutParams(menuHeight, menuHeight, 0f).apply { marginEnd = dp(10) }
         mRVContainerMenu.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, menuHeight, 1f)
         mCandidatesMenuAdapter.notifyChanged()  // 点击下拉菜单后，需要刷新菜单栏
+    }
+
+    /**
+     * 定制工具栏的编辑状态：顶部菜单长按拖动排序，点按带角标的菜单项将其移除。
+     * 只在「定制」打开的设置面板中启用，离开该面板即结束。
+     */
+    fun setBarMenuEditMode(enable: Boolean) {
+        if (!applyBarMenuEditMode(enable)) return
+        scheduleShowCandidates()
+    }
+
+    private fun applyBarMenuEditMode(enable: Boolean): Boolean {
+        if (!::mCandidatesMenuAdapter.isInitialized || isBarMenuEditMode == enable) return false
+        isBarMenuEditMode = enable
+        isBarMenuDragging = false
+        mCandidatesMenuAdapter.editMode = enable
+        if (enable) ensureBarMenuTouchHelper().attachToRecyclerView(mRVContainerMenu)
+        else barMenuTouchHelper?.attachToRecyclerView(null)
+        mMenuRightArrowBtn.setImageResource(if (enable) R.drawable.ic_menu_done else R.drawable.ic_menu_arrow_down)
+        mMenuRightArrowBtn.drawable.setTint(menuIconTint())
+        return true
+    }
+
+    private fun menuIconTint(): Int {
+        val theme = ThemeManager.activeTheme
+        val photo = theme is Theme.Custom && theme.backgroundImage != null
+        return if (photo) ThemeControls.foreground(theme, false) else theme.keyTextColor
+    }
+
+    private fun ensureBarMenuTouchHelper(): ItemTouchHelper {
+        barMenuTouchHelper?.let { return it }
+        return ItemTouchHelper(object : ItemTouchHelper.Callback() {
+            override fun getMovementFlags(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int =
+                makeMovementFlags(ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0)
+
+            override fun isLongPressDragEnabled() = true
+
+            override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                val moved = mCandidatesMenuAdapter.moveItem(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+                if (moved) barMenuOrderChanged = true
+                return moved
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState != ItemTouchHelper.ACTION_STATE_DRAG) return
+                isBarMenuDragging = true
+                viewHolder?.itemView?.apply { scaleX = 1.15f; scaleY = 1.15f; alpha = 0.9f }
+                DevicesUtils.tryVibrate(this@CandidatesBar)
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.apply { scaleX = 1f; scaleY = 1f; alpha = 1f }
+                isBarMenuDragging = false
+                // 拖动中 onMove 连续触发，松手后再一次性落库
+                if (barMenuOrderChanged) {
+                    barMenuOrderChanged = false
+                    SkbMenuCache.persistBarOrder(mCandidatesMenuAdapter.snapshot().map { it.skbMenuMode.name })
+                }
+            }
+        }).also { barMenuTouchHelper = it }
+    }
+
+    private fun removeBarMenuItem(item: SkbFunItem, position: Int) {
+        SkbMenuCache.removeBarMenu(item.skbMenuMode.name)
+        DevicesUtils.tryVibrate(this)
+        mCandidatesMenuAdapter.removeItem(position)
+        mCvListener.onBarMenuChanged()
     }
 
     private fun onClickMenu(skbMenuMode: SkbMenuMode, view: View?) {
@@ -246,6 +330,16 @@ class CandidatesBar(context: Context?, attrs: AttributeSet?) : RelativeLayout(co
             SkbMenuMode.decodeOrNull(it.name)?.let(menuSkbFunsPreset::get)
         }
         mIvMenuSetting.drawable.setLevel( if(container is InputBaseContainer) 0 else 1)
+        if (isBarMenuEditMode && container !is SettingsContainer) applyBarMenuEditMode(false)
+        if (isBarMenuEditMode) {
+            // 编辑时只列出已固定的菜单，剪贴板页拼入的操作项不参与排序与落库；拖动中不刷新以免打断手势
+            showViewVisibility(mCandidatesMenuContainer)
+            if (!isBarMenuDragging) {
+                mCandidatesMenuAdapter.items = barItems
+                mCandidatesMenuAdapter.notifyChanged()
+            }
+            return
+        }
         if (handwritingMessage != null) {
             showViewVisibility(handwritingStatus)
         } else if (container is ClipBoardContainer) {

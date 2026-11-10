@@ -6,6 +6,8 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.setPadding
@@ -17,7 +19,6 @@ import com.yuyan.imemodule.database.entry.Phrase
 import com.yuyan.imemodule.libs.pinyin4j.PinyinHelper
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.keyboard.KeyboardManager
-import com.yuyan.imemodule.view.widget.ImeEditText
 import com.yuyan.inputmethod.util.LX17PinYinUtils
 import com.yuyan.inputmethod.util.T9PinYinUtils
 import splitties.dimensions.dp
@@ -26,10 +27,14 @@ import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
 
-class EditPhrasesView(context: Context) : LinearLayout(context){
+/**
+ * 常用语编辑器。编辑期间经 [inputConnection] 充当键盘的本地输入目标，
+ * 输入、退格、方向键、选择与粘贴都落在当前获得焦点的输入框，不再触及宿主。
+ */
+class EditPhrasesView(context: Context, private val onSubmit: () -> Unit) : LinearLayout(context){
 
-    private var mEtPhrases: ImeEditText
-    private var mEtPhrasesQuickCode:ImeEditText
+    private var mEtPhrases: ImeSourceEditText
+    private var mEtPhrasesQuickCode: ImeSourceEditText
     private var mEtPhrasesTips:TextView
     init {
         orientation = VERTICAL
@@ -38,47 +43,62 @@ class EditPhrasesView(context: Context) : LinearLayout(context){
             setPadding(dp(5))
             textSize = 12f
         }
-        mEtPhrasesQuickCode = ImeEditText(context).apply {
+        mEtPhrasesQuickCode = ImeSourceEditText(context).apply {
             setText(R.string.add_phrases_input_tips)
             setPadding(dp(5))
             background = null
             isCursorVisible = true
             isFocusable = true
             isFocusableInTouchMode = true
-            inputType
+            localEditing = true
             textSize = 12f
         }
        val llTipContainer = LinearLayout(context)
         llTipContainer.add(mEtPhrasesTips, lParams(weight = 0f))
         llTipContainer.add(mEtPhrasesQuickCode, lParams(weight = 1f))
-        mEtPhrases = ImeEditText(context).apply {
+        mEtPhrases = ImeSourceEditText(context).apply {
             background = null
             isCursorVisible = true
             isFocusable = true
             isFocusableInTouchMode = true
+            localEditing = true
             gravity = Gravity.CENTER_VERTICAL
             textSize = 16f
             minLines = 3
             setPadding(dp(10))
             setHint(R.string.add_phrases_input_hint)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(editable: Editable) {
+                    val pinYinHeadChar  = PinyinHelper.getPinYinHeadChar(editable.toString().take(4))
+                    if(pinYinHeadChar.isNotBlank()) {
+                        mEtPhrasesQuickCode.setText(pinYinHeadChar)
+                        mEtPhrasesQuickCode.setSelection(pinYinHeadChar.length)
+                    }
+                }
+            })
+        }
+        // 切换输入框时清掉原框的组合态，否则下划线会一直留在原框中
+        for (editor in listOf(mEtPhrases, mEtPhrasesQuickCode)) {
+            editor.setOnFocusChangeListener { _, focused -> if (!focused) BaseInputConnection.removeComposingSpans(editor.editableText) }
         }
         add(llTipContainer, lParams(width = matchParent,height = wrapContent, weight = 0f))
         add(mEtPhrases, lParams(width = matchParent,height = wrapContent, weight = 1f))
     }
 
-    fun handleAddPhrasesView() {
+    private val focusedEditor: ImeSourceEditText
+        get() = if (mEtPhrasesQuickCode.isFocused) mEtPhrasesQuickCode else mEtPhrases
+
+    val inputConnection: InputConnection = object : BaseInputConnection(mEtPhrases, true) {
+        override fun getEditable(): Editable = focusedEditor.editableText
+        override fun sendKeyEvent(event: KeyEvent): Boolean = focusedEditor.dispatchKeyEvent(event)
+        override fun performContextMenuAction(id: Int): Boolean = focusedEditor.onTextContextMenuItem(id)
+        override fun performEditorAction(actionCode: Int): Boolean { onSubmit(); return true }
+    }
+
+    fun requestEditorFocus() {
         mEtPhrases.requestFocus()
-        mEtPhrases.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(editable: Editable) {
-                val pinYinHeadChar  = PinyinHelper.getPinYinHeadChar(editable.toString().take(4))
-                if(pinYinHeadChar.isNotBlank()) {
-                    mEtPhrasesQuickCode.setText(pinYinHeadChar)
-                    mEtPhrasesQuickCode.setSelection(pinYinHeadChar.length)
-                }
-            }
-        })
     }
 
     fun clearPhrasesContent() {
@@ -87,6 +107,7 @@ class EditPhrasesView(context: Context) : LinearLayout(context){
     }
 
     fun addPhrasesHandle() {
+        inputConnection.finishComposingText()
         val content = mEtPhrases.text.toString()
         if(content.isNotBlank()) {
             val pinYinHeadChar  = mEtPhrasesQuickCode.text.toString()
@@ -105,28 +126,6 @@ class EditPhrasesView(context: Context) : LinearLayout(context){
         mEtPhrases.setSelection(content.length)
         mEtPhrasesQuickCode.setText(qwerty)
         mEtPhrasesQuickCode.setSelection(qwerty.length)
-    }
-
-    fun commitText(text:String) {
-        val currentView = if(mEtPhrasesQuickCode.isFocused)mEtPhrasesQuickCode else mEtPhrases
-        currentView.commitText(text)
-    }
-
-    fun sendKeyEvent(keyCode: Int) {
-        val currentView = if(mEtPhrasesQuickCode.isFocused)mEtPhrasesQuickCode else mEtPhrases
-        when(keyCode){
-            KeyEvent.KEYCODE_DEL ->{
-                currentView.onKeyDown(keyCode, KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                currentView.onKeyUp(keyCode, KeyEvent(KeyEvent.ACTION_UP, keyCode))
-            }
-            KeyEvent.KEYCODE_ENTER ->{
-                addPhrasesHandle()
-            }
-            else -> {
-                val unicodeChar: Char = KeyEvent(KeyEvent.ACTION_DOWN, keyCode).unicodeChar.toChar()
-                if (unicodeChar != Character.MIN_VALUE)currentView.commitText(unicodeChar.toString())
-            }
-        }
     }
 
     fun updateTheme(theme: Theme) {

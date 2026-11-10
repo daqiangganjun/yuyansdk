@@ -30,6 +30,8 @@
     <string name="setting_jian_fan">繁体输入</string>
     <string name="chinese_association">中文联想</string>
     <string name="chinese_association_date">中文联想显示时间</string>
+    <string name="cn_en_input">中英混输</string>
+    <string name="cn_en_input_summary">中文候选中包含英文单词与中英混合词；关闭后只保留中文候选</string>
     <string name="fuzzy_pinyin_setting">模糊音</string>
     <string name="fuzzy_pinyin_enable">启用模糊音</string>
     <string name="fuzzy_pinyin_enable_summary">等价读音由引擎统一排序，支持全拼、九键和双拼。修改后会重新准备词库配置</string>

@@ -47,6 +47,7 @@ import com.yuyan.imemodule.libs.pinyin4j.PolyphoneReading
 import com.yuyan.imemodule.keyboard.container.CandidatesContainer
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
 import com.yuyan.imemodule.keyboard.container.HandwritingContainer
+import com.yuyan.imemodule.keyboard.container.SettingsContainer
 import com.yuyan.imemodule.keyboard.container.SymbolContainer
 import com.yuyan.imemodule.keyboard.container.T9TextContainer
 import com.yuyan.imemodule.keyboard.container.InputBaseContainer
@@ -138,13 +139,16 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private var clipboardSearchResult: ((String?) -> Unit)? = null
     val isClipboardSearchActive get() = ::clipboardSearchPanel.isInitialized && clipboardSearchPanel.isSearching
     val localInputConnection get() = (if (isClipboardSearchActive) clipboardSearchPanel.inputConnection else null)
+        ?: (if (isAddPhrases) mAddPhrasesLayout.inputConnection else null)
         ?: if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputConnection else null
-    val isTransformingText get() = !isClipboardSearchActive && ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
+    /** 搜索栏或常用语编辑器正在接收输入，按键一律写入本地输入框，不走终端与花漾字流程 */
+    private val isLocalEditorActive get() = isClipboardSearchActive || isAddPhrases
+    val isTransformingText get() = !isLocalEditorActive && ::auxiliaryPanel.isInitialized && auxiliaryPanel.isEditing
     val hasFlowerDraft get() = isTransformingText && auxiliaryPanel.hasDraft
     val flowerInputRouteRevision get() = if (::auxiliaryPanel.isInitialized) auxiliaryPanel.inputRouteRevision else 0L
     val wantsFlowerSourceInput get() = ::auxiliaryPanel.isInitialized && auxiliaryPanel.wantsSourceInput
-    private val hasTerminalModifiers get() = !isClipboardSearchActive && InputModeSwitcher.isTerminalMode && terminalInput.modifiers.metaState != 0
-    val isTerminalTarget get() = !isClipboardSearchActive && !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
+    private val hasTerminalModifiers get() = !isLocalEditorActive && InputModeSwitcher.isTerminalMode && terminalInput.modifiers.metaState != 0
+    val isTerminalTarget get() = !isLocalEditorActive && !isTransformingText && (InputModeSwitcher.isTerminalMode || terminalInput.isTermux)
 
     fun startClipboardSearch(query: String, hint: String, result: (String?) -> Unit) {
         prepareAuxiliaryAction()
@@ -242,6 +246,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     private val clipboardItemTimeout = appPrefs.clipboard.clipboardItemTimeout.getValue()
     private var chinesePrediction = true
     var isAddPhrases = false
+        private set
     private val mChoiceNotifier = ChoiceNotifier()
     var mSkbRoot: RelativeLayout
     var mSkbCandidatesBarView: CandidatesBar
@@ -334,7 +339,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         mHoderLayoutLeft = mSkbRoot.findViewById(R.id.ll_skb_holder_layout_left)
         mHoderLayoutRight = mSkbRoot.findViewById(R.id.ll_skb_holder_layout_right)
         mInputKeyboardContainer = mSkbRoot.findViewById(R.id.ll_input_keyboard_container)
-        mAddPhrasesLayout = EditPhrasesView(context)
+        mAddPhrasesLayout = EditPhrasesView(context) { exitPhrasesEditor(returnToPhrases = true) }
         mLlKeyboardBottomHolder = mSkbRoot.findViewById(R.id.iv_keyboard_holder)
         auxiliaryPanel = KeyboardAuxiliaryPanel(context, service, terminalInput,
             { prepareAuxiliaryAction() }, { prepareFlowerSourceEdit() },
@@ -399,7 +404,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                     addRule(ABOVE, mSkbRoot.id)
                     addRule(ALIGN_LEFT, mSkbRoot.id)
                 })
-                mAddPhrasesLayout.handleAddPhrasesView()
+                mAddPhrasesLayout.requestEditorFocus()
             }
         } else {
             removeView(mAddPhrasesLayout)
@@ -789,10 +794,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 pref.setValue(!pref.getValue())
                 KeyboardManager.instance.switchKeyboard()
             }
-            PopupMenuMode.Clear -> {
-                if (isAddPhrases) mAddPhrasesLayout.clearPhrasesContent()
-                else clearTextBeforeCursor()
-            }
+            PopupMenuMode.Clear -> clearTextBeforeCursor()
             PopupMenuMode.Revertl -> textBeforeCursors.popInReverseOrder()?.takeIf { it.isNotEmpty() }?.let { commitText(it) }
             PopupMenuMode.Enter -> commitText("\n")
             else -> {}
@@ -833,7 +835,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun commitHandwriting(text: String) {
         handwritingComposing = null
         handwritingReading = null
-        if (isAddPhrases) mAddPhrasesLayout.commitText(text) else service.commitText(text)
+        service.commitText(text)
         updateComposingBubble()
     }
 
@@ -890,7 +892,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             auxiliaryPanel.completeFlowerInput()
             return true
         }
-        if (!isAddPhrases && !isClipboardSearchActive && InputModeSwitcher.isTerminalMode &&
+        if (!isLocalEditorActive && InputModeSwitcher.isTerminalMode &&
             (InputModeSwitcher.isEnglish || terminalInput.modifiers.metaState != 0 || event.isAltPressed || event.isCtrlPressed)) {
             return processTerminalKey(event)
         }
@@ -936,7 +938,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         var result = true
         when {
             keyCode == KeyEvent.KEYCODE_DEL -> {
-                service.getTextBeforeCursor(1).takeIf { it.isNotEmpty() }?.let { textBeforeCursors.push(it) }
+                recordDeletedChar()
                 sendKeyEvent(keyCode)
             }
             keyCode in (KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) -> {
@@ -1047,7 +1049,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
                 if (hasHandwritingInput || handwritingComposing != null) {
                     cancelHandwritingInput()
                 } else if (DecodingInfo.isCandidatesEmpty || DecodingInfo.isAssociate) {
-                    service.getTextBeforeCursor(1).takeIf { it.isNotEmpty() }?.let { textBeforeCursors.push(it) }
+                    recordDeletedChar()
                     sendKeyEvent(keyCode)
                 } else {
                     DecodingInfo.deleteAction()
@@ -1142,7 +1144,6 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 因而无须再为「候选已上屏」维护额外状态。
      */
     private fun setHandwritingComposing(text: String) {
-        if (isAddPhrases) return
         handwritingComposing = text
         handwritingReading = PolyphoneReading.of(text).takeIf(String::isNotEmpty)
         service.setComposingText(text)
@@ -1239,25 +1240,52 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             DataBaseKT.instance.clipboardDao().deleteAllExceptKeep()
             (KeyboardManager.instance.currentContainer as? ClipBoardContainer)?.showClipBoardView(SkbMenuMode.ClipBoard)
         }
+
+        override fun onBarMenuChanged() {
+            (KeyboardManager.instance.currentContainer as? SettingsContainer)?.refreshBarMenuState()
+        }
     }
 
     fun onSettingsMenuClick(skbMenuMode: SkbMenuMode, extra: Phrase? = null) {
         finishClipboardSearch(false, false)
         auxiliaryPanel.cancelFunctionKeyInput()
         if (skbMenuMode == SkbMenuMode.AddPhrases) {
-            isAddPhrases = true
-            KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)
-            initView(context)
-            if (extra != null) {
-                DataBaseKT.instance.phraseDao().deleteByContent(extra.content)
-                mAddPhrasesLayout.setExtraData(extra)
-            } else {
-                mAddPhrasesLayout.clearPhrasesContent()
-            }
+            enterPhrasesEditor(extra)
         } else {
             onSettingsMenuClick(this, skbMenuMode)
+            mSkbCandidatesBarView.setBarMenuEditMode(skbMenuMode == SkbMenuMode.Custom)
         }
         mSkbCandidatesBarView.initMenuView()
+    }
+
+    /**
+     * 打开常用语编辑器。编辑器经 [localInputConnection] 接收键盘输入；撤回队列里是宿主文本，
+     * 进出时都清空，避免撤回把一方的内容插到另一方。
+     */
+    private fun enterPhrasesEditor(phrase: Phrase?) {
+        resetToIdleState()
+        textBeforeCursors.clear()
+        isAddPhrases = true
+        KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)
+        initView(context)
+        if (phrase != null) {
+            DataBaseKT.instance.phraseDao().deleteByContent(phrase.content)
+            mAddPhrasesLayout.setExtraData(phrase)
+        } else {
+            mAddPhrasesLayout.clearPhrasesContent()
+        }
+    }
+
+    /** 保存并关闭常用语编辑器；[returnToPhrases] 为真时回到常用语列表 */
+    private fun exitPhrasesEditor(returnToPhrases: Boolean) {
+        if (!isAddPhrases) return
+        // 未落定的手写与组合文本须在切回宿主前落到编辑器里
+        resetToIdleState()
+        isAddPhrases = false
+        textBeforeCursors.clear()
+        mAddPhrasesLayout.addPhrasesHandle()
+        initView(context)
+        if (returnToPhrases) onSettingsMenuClick(SkbMenuMode.Phrases)
     }
 
     fun selectPrefix(position: Int) {
@@ -1303,6 +1331,21 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
      * 跨会话保留会把上一个应用的输入内容带到下一个应用。
      */
     fun clearTextBeforeCursors() = textBeforeCursors.clear()
+
+    /**
+     * 退格前记下将被删除的字符供撤回。
+     *
+     * 有选区时退格删的是选区而非光标前的字符，记录了也无法正确还原，故不记录；
+     * emoji 等代理对与 \r\n 会被一次退格整体删除，记录时须整体取出，否则撤回只能还原半个字符。
+     */
+    private fun recordDeletedChar() {
+        val hasSelectedText = localInputConnection?.let { !it.getSelectedText(0).isNullOrEmpty() } ?: (selStart != selEnd)
+        if (hasSelectedText) return
+        val before = service.getTextBeforeCursor(2)
+        if (before.isEmpty()) return
+        val whole = before == "\r\n" || before.length == 2 && Character.isSurrogatePair(before[0], before[1])
+        textBeforeCursors.push(if (whole) before else before.takeLast(1))
+    }
 
     /**
      * 判断左右方向键是否已顶到文本边界。
@@ -1359,70 +1402,61 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     }
 
     private fun sendKeyEvent(keyCode: Int) {
-        if (isAddPhrases) {
-            mAddPhrasesLayout.sendKeyEvent(keyCode)
-            if (keyCode == KeyEvent.KEYCODE_ENTER) {
-                isAddPhrases = false
-                initView(context)
-                onSettingsMenuClick(SkbMenuMode.Phrases)
-            }
-        } else {
-            if (isTerminalTarget || isTransformingText) {
-                terminalInput.sendKey(keyCode, if (hasSelection) KeyEvent.META_SHIFT_ON else 0)
-                return
-            }
-            when (keyCode) {
-                KeyEvent.KEYCODE_ENTER -> service.sendEnterKeyEvent()
-                in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    // 有选区时方向键先把选区折叠掉：上、左归到选区首，下、右归到选区尾。
-                    // 与桌面编辑器一致，也使「全选后按上」和「全选后按左」结果相同——
-                    // 否则上下键在单行输入框里无处可去，会被当作焦点导航把输入框的焦点带走
-                    if (!hasSelection && selStart != selEnd) {
-                        val toHead = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                        val target = if (toHead) minOf(selStart, selEnd) else maxOf(selStart, selEnd)
-                        service.setSelection(target, target)
-                        hasSelectionAll = false
-                        return
-                    }
-                    // 光标已在首/末时不再下发方向键：越界的方向键会被应用当作焦点导航，
-                    // 焦点跳到相邻控件后输入框失焦，表现为光标消失、甚至键盘被收起
-                    if (isCursorAtEdge(keyCode)) return
-                    service.sendCombinationKeyEvents(keyCode, shift = hasSelection)
-                    if (hasSelectionAll) hasSelectionAll = false
+        if (isAddPhrases && keyCode == KeyEvent.KEYCODE_ENTER) {
+            exitPhrasesEditor(returnToPhrases = true)
+            return
+        }
+        if (isTerminalTarget || isTransformingText) {
+            terminalInput.sendKey(keyCode, if (hasSelection) KeyEvent.META_SHIFT_ON else 0)
+            return
+        }
+        when (keyCode) {
+            KeyEvent.KEYCODE_ENTER -> service.sendEnterKeyEvent()
+            in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                // 有选区时方向键先把选区折叠掉：上、左归到选区首，下、右归到选区尾。
+                // 与桌面编辑器一致，也使「全选后按上」和「全选后按左」结果相同——
+                // 否则上下键在单行输入框里无处可去，会被当作焦点导航把输入框的焦点带走。
+                // selStart/selEnd 记的是宿主选区，本地输入框由其自身处理方向键
+                if (!hasSelection && selStart != selEnd && localInputConnection == null) {
+                    val toHead = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    val target = if (toHead) minOf(selStart, selEnd) else maxOf(selStart, selEnd)
+                    service.setSelection(target, target)
+                    hasSelectionAll = false
+                    return
                 }
-                else -> service.sendCombinationKeyEvents(keyCode)
+                // 光标已在首/末时不再下发方向键：越界的方向键会被应用当作焦点导航，
+                // 焦点跳到相邻控件后输入框失焦，表现为光标消失、甚至键盘被收起
+                if (isCursorAtEdge(keyCode)) return
+                service.sendCombinationKeyEvents(keyCode, shift = hasSelection)
+                if (hasSelectionAll) hasSelectionAll = false
             }
+            else -> service.sendCombinationKeyEvents(keyCode)
         }
     }
 
     private fun setComposingText(text: CharSequence) {
-        if (!isAddPhrases) service.setComposingText(text)
+        service.setComposingText(text)
     }
 
     private fun commitText(text: String) {
-        if (isClipboardSearchActive) service.commitText(text)
-        else if (isAddPhrases) mAddPhrasesLayout.commitText(text)
-        else if (hasTerminalModifiers || !isClipboardSearchActive && InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
+        if (isLocalEditorActive) service.commitText(text)
+        else if (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish) terminalInput.sendText(text)
         else service.commitText(text)
     }
 
     private fun commitPairSymbol(text: String) {
-        if (!isAddPhrases && !isClipboardSearchActive && (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish)) {
+        if (!isLocalEditorActive && (hasTerminalModifiers || InputModeSwitcher.isTerminalMode && InputModeSwitcher.isEnglish)) {
             terminalInput.sendText(text)
             return
         }
-        if (isAddPhrases) {
-            mAddPhrasesLayout.commitText(text)
-        } else {
-            if (appPrefs.input.symbolPairInput.getValue()) {
-                val target = service.activeInputConnection
-                service.commitText(text + SymbolPreset[text]!!)
-                postDelayed(300) {
-                    if (service.activeInputConnection === target) service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
-                }
-            } else {
-                service.commitText(text)
+        if (appPrefs.input.symbolPairInput.getValue()) {
+            val target = service.activeInputConnection
+            service.commitText(text + SymbolPreset[text]!!)
+            postDelayed(300) {
+                if (service.activeInputConnection === target) service.sendCombinationKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
             }
+        } else {
+            service.commitText(text)
         }
     }
 
@@ -1434,15 +1468,11 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
 
     private fun commitDecInfoText(resultText: String?) {
         resultText ?: return
-        if (isAddPhrases) {
-            mAddPhrasesLayout.commitText(resultText)
-        } else {
-            service.commitText(resultText)
-            if (InputModeSwitcher.isEnglish){
-                service.finishComposingText()
-                if(appPrefs.input.abcSpaceAuto.getValue()) service.commitText(" ")
-                resetToIdleState()
-            }
+        service.commitText(resultText)
+        if (InputModeSwitcher.isEnglish){
+            service.finishComposingText()
+            if(appPrefs.input.abcSpaceAuto.getValue()) service.commitText(" ")
+            resetToIdleState()
         }
     }
 
@@ -1506,11 +1536,8 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
     fun onWindowHidden() {
         handwritingTouchTarget = null
         finishAuxiliaryInput()
-        if (isAddPhrases) {
-            isAddPhrases = false
-            mAddPhrasesLayout.addPhrasesHandle()
-            initView(context)
-        }
+        exitPhrasesEditor(returnToPhrases = false)
+        mSkbCandidatesBarView.setBarMenuEditMode(false)
         KeyboardManager.instance.switchKeyboard()
         resetToIdleState()
     }

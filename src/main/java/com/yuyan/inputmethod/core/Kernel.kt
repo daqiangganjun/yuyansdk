@@ -3,6 +3,7 @@ package com.yuyan.inputmethod.core
 import android.view.KeyEvent
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.service.DecodingInfo
+import com.yuyan.inputmethod.EngineRuntime
 import com.yuyan.inputmethod.RimeEngine
 
 object Kernel {
@@ -90,6 +91,7 @@ object Kernel {
         RimeEngine.setImeOption("traditionalization", chineseFanTi)
         val emojiInput = AppPrefs.getInstance().input.emojiInput.getValue()
         RimeEngine.setImeOption("emoji", emojiInput)
+        RimeEngine.setImeOption(EngineRuntime.PURE_CHINESE_OPTION, !AppPrefs.getInstance().input.cnEnInput.getValue())
     }
 
     fun setCharCase(charCase: Int) {

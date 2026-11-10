@@ -35,6 +35,7 @@ object RimeEngine {
     private val rimeIndexMap = ArrayList<Int>(64)
     private var rimeCandidateCount = 0
     private const val RAW_INPUT_CANDIDATE = -1
+    private val UNCONVERTED_KEYS = Regex("[A-Z]+")
 
     /**
      * 用户实际按下的键序列，供拼音编辑重放使用。
@@ -138,23 +139,7 @@ object RimeEngine {
                 rimeIndexMap.add(rimeCandidateCount + it)
             }
             rimeCandidateCount += candidates.size
-            when (charCase) {
-                KeyEvent.META_SHIFT_ON -> {
-                    for (item in candidates) {
-                        if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
-                    }
-                }
-                KeyEvent.META_CAPS_LOCK_ON -> {
-                    for (item in candidates) {
-                        item.text = if (InputModeSwitcher.isEnglish) englishCase(item.text) else item.text.uppercase()
-                    }
-                }
-                else -> {
-                    for (item in candidates) {
-                        if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
-                    }
-                }
-            }
+            for (item in candidates) item.text = candidateCase(item.text)
             candidates
         } else emptyArray()
     }
@@ -411,16 +396,7 @@ object RimeEngine {
             com.yuyan.imemodule.data.transfer.DataChangeTracker.learningChanged(EngineRuntime.learningDictionary(), rimeCommit.commitText)
             keyRecordStack.clear()
             editCaret = -1
-            preCommitText = rimeCommit.commitText
-            preCommitText = if (InputModeSwitcher.isEnglish) {
-                englishCase(preCommitText)
-            } else if (charCase == KeyEvent.META_SHIFT_ON) {
-                preCommitText.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-            } else if (charCase == KeyEvent.META_CAPS_LOCK_ON) {
-                preCommitText.uppercase()
-            } else {
-                if (InputModeSwitcher.isEnglish) preCommitText.lowercase() else preCommitText
-            }
+            preCommitText = candidateCase(rimeCommit.commitText)
             showComposition = ""
             showCandidates = emptyList()
             return preCommitText
@@ -456,40 +432,49 @@ object RimeEngine {
         }
         // 方案在一次输入会话内不变，取一次供下方复用，省去重复的 JNI 调用
         val rimeSchema = Rime.getCurrentRimeSchema()
-        var composition = getCurrentComposition(candidates, rimeSchema)
-        when (charCase) {
-            KeyEvent.META_SHIFT_ON -> {
-                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
-                composition = composition.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-            }
-            KeyEvent.META_CAPS_LOCK_ON -> {
-                for (item in showCandidates) item.text = if (InputModeSwitcher.isEnglish) englishCase(item.text) else item.text.uppercase()
-                composition = composition.uppercase()
-            }
-            else -> {
-                for (item in showCandidates) if (InputModeSwitcher.isEnglish) item.text = englishCase(item.text)
-                composition = composition.lowercase()
+        for (item in showCandidates) item.text = candidateCase(item.text)
+        val composition = getCurrentComposition(candidates, rimeSchema).let {
+            when (charCase) {
+                KeyEvent.META_SHIFT_ON -> it.lowercase().replaceFirstChar { char -> char.titlecase(Locale.ENGLISH) }
+                KeyEvent.META_CAPS_LOCK_ON -> it.uppercase()
+                else -> it.lowercase()
             }
         }
         pinyins = when (rimeSchema) {
-            CustomConstant.SCHEMA_ZH_T9 -> {
-                T9PinYinUtils.t9KeyToPinyin(compositionText.split('\'').firstOrNull { part -> part.isNotEmpty() && part.all { it.isUpperCase() } } ?: "")
-            }
-            CustomConstant.SCHEMA_ZH_DOUBLE_LX17 -> {
-                LX17PinYinUtils.lx17KeyToPinyin(compositionText.split('\'').firstOrNull { part -> part.isNotEmpty() && part.all { it.isUpperCase() } } ?: "")
-            }
-            else -> {
-                emptyArray()
-            }
+            CustomConstant.SCHEMA_ZH_T9 -> T9PinYinUtils.t9KeyToPinyin(pendingKeys(compositionText))
+            CustomConstant.SCHEMA_ZH_DOUBLE_LX17 -> LX17PinYinUtils.lx17KeyToPinyin(pendingKeys(compositionText))
+            else -> emptyArray()
         }
         showComposition = composition
         preCommitText = ""
         return null
     }
 
+    /**
+     * 编码中尚未转换的按键码：已选词的部分以汉字显示，取去掉分词符后的首段大写字母。
+     */
+    private fun pendingKeys(compositionText: String): String =
+        UNCONVERTED_KEYS.find(compositionText.replace("'", ""))?.value ?: ""
+
+    /**
+     * 候选与上屏文本的大小写，显示与上屏共用以保持一致。
+     *
+     * 英文方案按键入逐字对应；中文方案只转换纯 ASCII 文本，含汉字的中英混合词（如「卡拉OK」）
+     * 保留词库原样，无 Shift/Caps 时 iPhone 之类的专名也不改写。
+     */
+    private fun candidateCase(text: String): String {
+        if (InputModeSwitcher.isEnglish) return englishCase(text)
+        if (text.isEmpty() || text.any { it.code > 0x7F }) return text
+        return when (charCase) {
+            KeyEvent.META_SHIFT_ON -> text.replaceFirstChar { it.titlecase(Locale.ENGLISH) }
+            KeyEvent.META_CAPS_LOCK_ON -> text.uppercase(Locale.ENGLISH)
+            else -> text
+        }
+    }
+
     private fun englishCase(text: String): String {
         if (rawInput.isEmpty()) return when (charCase) {
-            KeyEvent.META_SHIFT_ON -> text.lowercase().replaceFirstChar { it.titlecase(Locale.getDefault()) }
+            KeyEvent.META_SHIFT_ON -> text.lowercase().replaceFirstChar { it.titlecase(Locale.ENGLISH) }
             KeyEvent.META_CAPS_LOCK_ON -> text.uppercase()
             else -> text.lowercase()
         }

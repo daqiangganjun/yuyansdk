@@ -123,9 +123,8 @@ class ImeService : InputMethodService() {
         }
     }
 
-    override fun onEvaluateInputViewShown(): Boolean {
-        return if(getInstance().keyboardSetting.showVirtualKeyboardOnPhysicalKeyboard.getValue()) true else super.onEvaluateInputViewShown()
-    }
+    // 与按键路由共用 handleHardwareKeyboard 的判定，避免显示软键盘却按物理键盘分发按键
+    override fun onEvaluateInputViewShown(): Boolean = isSoftKeyboard
 
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         cancelVoiceInput()
@@ -195,7 +194,7 @@ class ImeService : InputMethodService() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         cancelVoiceInput()
         super.onConfigurationChanged(newConfig)
-        handleHardwareKeyboard(newConfig)
+        handleHardwareKeyboard()
         // 连续旋转时只保留最后一次重建，否则会叠加多次全量重建
         reloadKeyboardJob?.cancel()
         reloadKeyboardJob = serviceScope.launch {
@@ -304,6 +303,8 @@ class ImeService : InputMethodService() {
         if (matrix != null) {
             matrix.mapPoints(cursorAnchorPosition)
         }
+        // 宿主未提供插入点时坐标为 NaN，按 0 处理会把候选栏推到屏幕顶部，保持原位置
+        if (cursorAnchorPosition[0].isNaN() || cursorAnchorPosition[1].isNaN()) return
         mCandidateView?.updatePosition(cursorAnchorPosition)
     }
 
@@ -345,7 +346,8 @@ class ImeService : InputMethodService() {
             activeInputConnection?.commitText("\n", 1)
             return
         }
-        val inputConnection = getCurrentInputConnection()
+        // 回车动作取自宿主 EditorInfo，须作用于宿主连接而非输入法内部的本地编辑框
+        val inputConnection = currentInputConnection ?: return
         YuyanEmojiCompat.mEditorInfo?.run {
             if (inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL || imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)) {
                 sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
@@ -452,14 +454,16 @@ class ImeService : InputMethodService() {
         activeInputConnection?.getExtractedText(ExtractedTextRequest(), 0)?.text?.length ?: -1
     }.getOrDefault(-1)
 
-    fun handleHardwareKeyboard(newConfig: Configuration? = null) {
-        val hardwareKeyboard = if (getInstance().keyboardSetting.showVirtualKeyboardOnPhysicalKeyboard.getValue()) false
-            else if (newConfig != null) (newConfig.keyboard != Configuration.KEYBOARD_NOKEYS)
-            else resources.configuration.keyboard != Configuration.KEYBOARD_NOKEYS
-        isSoftKeyboard = !hardwareKeyboard
-        isHardwareKeyboard = hardwareKeyboard
+    /**
+     * 判定软键盘或物理键盘模式。基类判定兼顾系统「使用实体键盘时显示屏幕键盘」开关与键盘盖合状态，
+     * 读取的是当前 Resources 配置；onConfigurationChanged 回调时它已更新为新配置。
+     */
+    fun handleHardwareKeyboard() {
+        isSoftKeyboard = getInstance().keyboardSetting.showVirtualKeyboardOnPhysicalKeyboard.getValue() || super.onEvaluateInputViewShown()
+        isHardwareKeyboard = !isSoftKeyboard
         setCandidatesViewShown(isHardwareKeyboard)
-        currentInputConnection.requestCursorUpdates(if(isHardwareKeyboard)InputConnection.CURSOR_UPDATE_MONITOR else 0)
+        // 未绑定输入连接时（如息屏后切换深色模式）为 null
+        currentInputConnection?.requestCursorUpdates(if(isHardwareKeyboard)InputConnection.CURSOR_UPDATE_MONITOR else 0)
     }
 
 }

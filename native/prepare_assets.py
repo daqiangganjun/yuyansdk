@@ -38,6 +38,11 @@ def dictionary(repo, name, output, prefix, target=None):
     return target
 
 
+# 「中英混输」开关的过滤器；librime-lua 找不到模块时候选会整体为空，凡引用它的词库包都须带上该文件。
+PURE_CHINESE_FILTER = "lua_filter@*selfopt_pure_chinese"
+PURE_CHINESE_LUA = "lua/selfopt_pure_chinese.lua"
+
+
 def base_schema(schema_id, name, dictionary_name):
     return {
         "schema": {"schema_id": schema_id, "name": name, "version": "1"},
@@ -50,7 +55,7 @@ def base_schema(schema_id, name, dictionary_name):
                            "selector", "navigator", "express_editor"],
             "segmentors": ["ascii_segmentor", "matcher", "abc_segmentor", "punct_segmentor", "fallback_segmentor"],
             "translators": ["punct_translator", "script_translator", "table_translator@melt_eng", "table_translator@cn_en"],
-            "filters": ["lua_filter@*autocap_filter", "lua_filter@*reduce_english_filter",
+            "filters": ["lua_filter@*autocap_filter", "lua_filter@*reduce_english_filter", PURE_CHINESE_FILTER,
                         "simplifier@emoji", "simplifier@traditionalize", "uniquifier"]},
         "menu": {"page_size": 100},
         "ascii_composer": {"good_old_caps_lock": False, "switch_key": {"Shift_L": "noop", "Shift_R": "noop"}},
@@ -86,6 +91,7 @@ def prepare(root, generated, include_ice=False):
     shutil.copytree(frost / "opencc", output / "opencc")
     shutil.copytree(frost / "lua", output / "lua")
     shutil.copy2(NATIVE / "data/selfopt_stroke.lua", output / "lua/selfopt_stroke.lua")
+    shutil.copy2(NATIVE / "data/selfopt_pure_chinese.lua", output / PURE_CHINESE_LUA)
     shutil.copy2(frost / "essay.txt", output / "essay.txt")
     shutil.copy2(frost / "zh-moqi.gram", output / "zh-moqi.gram")
     dictionary(frost, "melt_eng", output, "english", "melt_eng")

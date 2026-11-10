@@ -121,13 +121,9 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
                     itemTouchHelper.startDrag(holder)
                 }
                 override fun onOptionClick(parent: RecyclerView.Adapter<*>?, v: SkbFunItem, position: Int) {
-                    val barMenu = DataBaseKT.instance.skbFunDao().getBarMenu(v.skbMenuMode.name)
-                    if(barMenu == null){
-                        DataBaseKT.instance.skbFunDao().insert(SkbFun(name = v.skbMenuMode.name, isKeep = 1))
-                    } else {
-                        DataBaseKT.instance.skbFunDao().delete(SkbFun(name = v.skbMenuMode.name, isKeep = 1))
-                    }
-                    SkbMenuCache.invalidate()
+                    val name = v.skbMenuMode.name
+                    if (DataBaseKT.instance.skbFunDao().getBarMenu(name) == null) SkbMenuCache.addBarMenu(name)
+                    else SkbMenuCache.removeBarMenu(name)
                     inputView.updateCandidateBar()
                     adapter?.notifyDataSetChanged()
                 }
@@ -152,6 +148,11 @@ class SettingsContainer(context: Context, inputView: InputView) : BaseContainer(
             ordered.forEach { dao.update(it) }
         }
         SkbMenuCache.invalidate()
+    }
+
+    /** 候选栏上移除菜单后同步面板中的加减号 */
+    fun refreshBarMenuState() {
+        adapter?.notifyDataSetChanged()
     }
 
     private fun stopDragging() {

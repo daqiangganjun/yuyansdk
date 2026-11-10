@@ -13,8 +13,17 @@ import java.util.PriorityQueue
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class MobileDictionaryRecipe(private val source: GithubDictionarySource, private val baseline: File, private val output: File) {
-    companion object { const val VERSION = 1 }
+/**
+ * @param pureChineseLua 应用内置词库包中的「中英混输」过滤脚本，缺省时取 [baseline] 中的同名文件
+ */
+class MobileDictionaryRecipe(private val source: GithubDictionarySource, private val baseline: File, private val output: File,
+                             private val pureChineseLua: ByteArray? = null) {
+    companion object {
+        const val VERSION = 2
+        // librime-lua 找不到模块时候选会整体为空，凡写入该过滤器的包都必须自带脚本
+        const val PURE_CHINESE_LUA = "lua/selfopt_pure_chinese.lua"
+        private const val PURE_CHINESE_FILTER = "lua_filter@*selfopt_pure_chinese"
+    }
     private val yaml = DictionaryYaml.parser()
     private val visiting = hashSetOf<String>()
     private val completed = hashMapOf<String, String>()
@@ -108,14 +117,36 @@ class MobileDictionaryRecipe(private val source: GithubDictionarySource, private
             val speller = section(config, "speller")
             val rules = (speller["algebra"] as? List<*>).orEmpty().map { it as? String ?: error("Invalid spelling rule") }
             speller["algebra"] = listOf("__SELFOPT_FUZZY__") + rules.filter { it != "__SELFOPT_FUZZY__" }
+            ensurePureChineseFilter(config)
             write(File(output, "templates/selfopt_${rule.family}_$logical.schema.yaml"), config)
         }
         if (rule.family == "frost") updateShared()
+        writePureChineseLua()
         for (path in source.paths("LICENSE")) copy(path, "licenses/rime-${rule.family}/$path")
         File(output, "sources.json").writeText(org.json.JSONObject().put("repository", rule.repository).put("revision", source.commit).put("recipe", VERSION).toString())
         File(output, "bundle.json").writeText(org.json.JSONObject().put("format", 1).put("compatibility", "selfopt-1")
             .put("family", rule.family).put("revision", source.commit).put("updatedAt", source.updatedAt).toString())
         return output
+    }
+
+    /** 旧版内置包生成的模板没有该过滤器，补在简繁、表情转换之前，与构建期模板一致 */
+    private fun ensurePureChineseFilter(config: MutableMap<String, Any?>) {
+        val engine = section(config, "engine")
+        val filters = (engine["filters"] as? List<*>).orEmpty().map { it as? String ?: error("Invalid schema filter") }
+        if (PURE_CHINESE_FILTER in filters) return
+        val anchor = filters.indexOfFirst { it.startsWith("simplifier@") }.takeIf { it >= 0 } ?: filters.size
+        engine["filters"] = filters.toMutableList().apply { add(anchor, PURE_CHINESE_FILTER) }
+    }
+
+    /** 白霜在 [updateShared] 重建 lua 目录之后写入，雾凇包同样自带，组合时不依赖白霜包的版本 */
+    private fun writePureChineseLua() {
+        val target = File(output, PURE_CHINESE_LUA).apply { parentFile!!.mkdirs() }
+        val fallback = File(baseline, PURE_CHINESE_LUA)
+        when {
+            pureChineseLua != null -> target.writeBytes(pureChineseLua)
+            fallback.isFile -> fallback.copyTo(target, overwrite = true)
+        }
+        require(target.isFile && target.length() > 0) { "Missing source file: $PURE_CHINESE_LUA" }
     }
 
     private fun copy(sourcePath: String, targetPath: String = sourcePath) {

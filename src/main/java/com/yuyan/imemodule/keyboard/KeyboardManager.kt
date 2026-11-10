@@ -106,11 +106,11 @@ class KeyboardManager {
             0x8000 -> KeyboardType.TEXTEDIT
             else -> KeyboardType.T9
         }
-        switchKeyboard(keyboardName)
+        switchKeyboard(keyboardName, layout)
         mInputView?.updateCandidateBar()
     }
 
-    fun switchKeyboard(keyboardName: KeyboardType) {
+    fun switchKeyboard(keyboardName: KeyboardType, layout: Int = InputModeSwitcher.skbLayout) {
         val rootView = mKeyboardRootView ?: return
         val inputView = mInputView ?: return
         if (keyboardName != KeyboardType.HANDWRITING && keyboardName != KeyboardType.CANDIDATES) {
@@ -119,7 +119,13 @@ class KeyboardManager {
         // 先于容器创建，使 HandwritingContainer 初始化时绑定已在建立
         syncHandwritingBinding(keyboardName == KeyboardType.HANDWRITING ||
             keyboardName == KeyboardType.CANDIDATES && handwritingBound)
+        val t9Layout = if (keyboardName == KeyboardType.T9) resolveT9Layout(layout) else 0
         var container = keyboards[keyboardName]
+        // 九宫格拼音与笔画共用 T9 缓存，布局不符时重建，否则会沿用另一种布局
+        if (container is T9TextContainer && keyboardName == KeyboardType.T9 && container.skbLayout != t9Layout) {
+            rootView.removeContainer(container)
+            container = null
+        }
         if (container == null) {
             container = when (keyboardName) {
                 KeyboardType.CANDIDATES ->  CandidatesContainer(Launcher.instance.context, inputView)
@@ -132,7 +138,7 @@ class KeyboardManager {
                 KeyboardType.LX17 -> T9TextContainer(Launcher.instance.context, inputView, InputModeSwitcher.MASK_SKB_LAYOUT_LX17)
                 KeyboardType.ClipBoard -> ClipBoardContainer(Launcher.instance.context, inputView)
                 KeyboardType.TEXTEDIT -> QwertyContainer(Launcher.instance.context, inputView, InputModeSwitcher.MASK_SKB_LAYOUT_TEXTEDIT)
-                else ->  T9TextContainer(Launcher.instance.context, inputView, AppPrefs.getInstance().internal.inputDefaultMode.getValue() and InputModeSwitcher.MASK_SKB_LAYOUT)
+                else ->  T9TextContainer(Launcher.instance.context, inputView, t9Layout)
             }
             container.updateSkbLayout()
             keyboards[keyboardName] = container
@@ -141,6 +147,13 @@ class KeyboardManager {
         mCurrentKeyboardName = keyboardName
         currentContainer = container
     }
+
+    /**
+     * 按目标布局创建九宫格类键盘。模式未设定时布局为 0，沿用最近一次语言模式的布局
+     */
+    private fun resolveT9Layout(layout: Int): Int =
+        (layout and InputModeSwitcher.MASK_SKB_LAYOUT).takeIf { it != 0 }
+            ?: (AppPrefs.getInstance().internal.inputDefaultMode.getValue() and InputModeSwitcher.MASK_SKB_LAYOUT)
 
     val isInputKeyboard: Boolean
         get() = currentContainer is InputBaseContainer
