@@ -15,8 +15,8 @@ object DataChangeTracker {
         writer.execute {
             runCatching {
                 val db = com.yuyan.imemodule.database.DataBaseKT.instance.openHelper.writableDatabase
-                db.execSQL("INSERT OR REPLACE INTO selfopt_changes(item, changed) VALUES (?, ?)", arrayOf("learn-word/$dictionary/$word", now))
-                db.execSQL("INSERT OR REPLACE INTO selfopt_changes(item, changed) VALUES (?, ?)", arrayOf("learn-activity/$dictionary", now))
+                db.execSQL("INSERT OR REPLACE INTO selfopt_changes(item, changed) VALUES (?, ?)", arrayOf<Any>("learn-word/$dictionary/$word", now))
+                db.execSQL("INSERT OR REPLACE INTO selfopt_changes(item, changed) VALUES (?, ?)", arrayOf<Any>("learn-activity/$dictionary", now))
             }.onFailure { android.util.Log.e("SelfOptSync", "Cannot record learning modification time", it) }
         }
     }

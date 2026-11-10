@@ -1,75 +1,65 @@
+import com.android.build.api.variant.BuildConfigField
+
 plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-    id 'kotlin-android'
-    id 'com.google.devtools.ksp'
-    id 'kotlin-parcelize'
-    id 'kotlinx-serialization'
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
+    jvmToolchain(libs.versions.jvmToolchain.get().toInteger())
 }
 
-static def getAppGitHead() {
-    def head = "git rev-parse HEAD".execute().text.trim()
-    def dirty = "git status --porcelain --untracked-files=normal".execute().text.trim()
-    return dirty.isEmpty() ? head : head + "-dirty"
+// 源码标识取自主仓库（子模块指针随之变化），工作区有改动时追加 -dirty；无 git 环境时为 unknown
+def gitOutput = { List<String> command ->
+    providers.exec {
+        commandLine command
+        workingDir = rootDir
+        ignoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }
 }
-
-static def getAppBuildTime() {
-    return "git log -1 --pretty=%ai".execute().text.trim()
+def appGitHead = gitOutput(['git', 'rev-parse', 'HEAD']).zip(gitOutput(['git', 'status', '--porcelain', '--untracked-files=normal'])) { head, dirty ->
+    head.isEmpty() ? 'unknown' : (dirty.isEmpty() ? head : "$head-dirty")
 }
-
+def appBuildTime = gitOutput(['git', 'log', '-1', '--pretty=%ai'])
 
 android {
-    compileSdk 36
-    buildToolsVersion '36.0.0'
-    namespace 'com.yuyan.imemodule'
+    compileSdk = libs.versions.compileSdk.get().toInteger()
+    buildToolsVersion = libs.versions.buildTools.get()
+    namespace = 'com.yuyan.imemodule'
     defaultConfig {
-        minSdk 23
-        targetSdk 35
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        minSdk = libs.versions.minSdk.get().toInteger()
+        testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
         ndk {
-            abiFilters 'arm64-v8a'
+            abiFilters += ['arm64-v8a']
         }
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments = [AROUTER_MODULE_NAME: project.getName()]
-            }
-        }
-        lintOptions {
-            abortOnError false
-        }
-
-        buildConfigField "String", "versionName", "\"${rootProject.ext.appVersionName}\""
-        buildConfigField "String", "AppCommitHead", "\"${getAppGitHead()}\""
-        buildConfigField "String", "AppBuildTime", "\"${getAppBuildTime()}\""
-
         // 混淆规则随 aar 传递给使用方，避免 app 与本模块重复维护同一份规则
         consumerProguardFiles 'proguard.cfg'
+    }
+
+    lint {
+        abortOnError = false
     }
 
     //多渠道打包: app中多渠道配置要一致
     flavorDimensions = ["default"]
     productFlavors {
         offline {
-            dimension "default"
-            buildConfigField "Boolean", "offline", "true"
+            dimension = "default"
         }
     }
 
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        resValues = true
     }
 
     buildTypes {
+        // 本模块以 project 依赖方式被 app 引用，此处混淆只会造成双重处理，
+        // 规则改由上方 consumerProguardFiles 传递给 app 的 R8
         release {
-            // 本模块以 project 依赖方式被 app 引用，此处混淆只会造成双重处理，
-            // 规则改由上方 consumerProguardFiles 传递给 app 的 R8
             resValue("string", "app_name", "@string/ime_yuyan_name")
             resValue("drawable", "app_icon", "@drawable/ic_sdk_launcher")
         }
@@ -80,54 +70,58 @@ android {
     }
     sourceSets {
         offline {
-            jniLibs.srcDirs = ["$buildDir/generated/rime/jniLibs"]
-            assets.srcDirs += ["$buildDir/generated/rime/assets"]
-        }
-        main {
-            assets.exclude 'rime/**'
+            jniLibs.directories.add(layout.buildDirectory.dir("generated/rime/jniLibs").get().asFile.path)
+            assets.directories.add(layout.buildDirectory.dir("generated/rime/assets").get().asFile.path)
         }
     }
 
-    //第三方库使用java1.8
     compileOptions {
-        sourceCompatibility 17
-        targetCompatibility 17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.buildConfigFields.put("versionName", new BuildConfigField("String", "\"${rootProject.ext.appVersionName}\"", null))
+        variant.buildConfigFields.put("AppCommitHead", appGitHead.map { new BuildConfigField("String", "\"$it\"", null) })
+        variant.buildConfigFields.put("AppBuildTime", appBuildTime.map { new BuildConfigField("String", "\"$it\"", null) })
     }
 }
 
 def nativeSourceRoot = providers.gradleProperty('rimeSourceRoot').orElse(file('native/.cache').absolutePath)
+def sdkDirectory = androidComponents.sdkComponents.sdkDirectory
 tasks.register('buildRimeNative', Exec) {
     inputs.files(fileTree('native') { exclude '.cache/**', 'build/**', '__pycache__/**' })
     inputs.file('src/main/java/com/yuyan/inputmethod/util/LX17PinYinUtils.kt')
-    outputs.dirs("$buildDir/generated/rime/assets", "$buildDir/generated/rime/jniLibs", "$buildDir/generated/rime/dictionary")
-    commandLine 'python', file('native/build_native.py').absolutePath,
-        '--sdk', android.sdkDirectory.absolutePath, '--source-root', nativeSourceRoot.get()
+    outputs.dirs(layout.buildDirectory.dir("generated/rime/assets"), layout.buildDirectory.dir("generated/rime/jniLibs"), layout.buildDirectory.dir("generated/rime/dictionary"))
+    commandLine 'python', file('native/build_native.py').absolutePath, '--source-root', nativeSourceRoot.get()
+    argumentProviders.add({ ['--sdk', sdkDirectory.get().asFile.absolutePath] } as CommandLineArgumentProvider)
     if (providers.gradleProperty('rimeSkipFetch').isPresent()) args '--skip-fetch'
 }
 tasks.named('preBuild').configure { dependsOn 'buildRimeNative' }
 
 dependencies {
-    implementation 'org.yaml:snakeyaml:2.3'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation libs.snakeyaml
+    implementation libs.okhttp
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [])
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation 'com.google.android.flexbox:flexbox:3.0.0'
-    implementation 'androidx.emoji2:emoji2:1.5.0'
-    implementation 'androidx.emoji2:emoji2-views:1.5.0'
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.2.21"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
-    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2'
-    implementation 'androidx.preference:preference-ktx:1.2.1'
-    implementation 'androidx.navigation:navigation-fragment-ktx:2.8.5'
-    implementation 'androidx.navigation:navigation-ui-ktx:2.8.5'
-    implementation 'com.louiscad.splitties:splitties-resources:3.0.0'
-    implementation 'com.louiscad.splitties:splitties-views-dsl-recyclerview:3.0.0'
-    implementation 'com.louiscad.splitties:splitties-views-dsl-constraintlayout:3.0.0'
-    implementation 'com.louiscad.splitties:splitties-views-dsl-appcompat:3.0.0'
-    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.constraintlayout
+    implementation libs.google.material
+    implementation libs.google.flexbox
+    implementation libs.androidx.emoji2
+    implementation libs.androidx.emoji2.views
+    implementation libs.kotlinx.coroutines.core
+    implementation libs.kotlinx.coroutines.android
+    implementation libs.kotlinx.serialization.json
+    implementation libs.androidx.preference.ktx
+    implementation libs.androidx.navigation.fragment.ktx
+    implementation libs.androidx.navigation.ui.ktx
+    implementation libs.splitties.resources
+    implementation libs.splitties.views.dsl.recyclerview
+    implementation libs.splitties.views.dsl.constraintlayout
+    implementation libs.splitties.views.dsl.appcompat
+    implementation libs.androidx.exifinterface
     // 手写识别：搜狗商业库的授权绑定原包名，本分支改名后失效，改用可离线运行的 ML Kit。
     // 注意其中文模型不随包分发，需运行时下载一次，见 MlKitHandwritingModel。
     // 19.0.0 支持 16 KB 页面，编译器需能读取 Kotlin 2.1 元数据。
@@ -136,20 +130,11 @@ dependencies {
     // 但 ML Kit 的依赖注入图在初始化时即强制实例化 CCTDestination，缺类会直接
     // NoClassDefFoundError 崩溃，故必须保留。改为在 manifest 中移除其后端发现服务与
     // 两个调度器：类虽在，却既注册不到后端也无法被调度，事件无从上传。
-    implementation 'com.google.mlkit:digital-ink-recognition:19.0.0'
+    implementation libs.mlkit.digital.ink
     // ML Kit 下载模型所依赖，本为其传递依赖；因 HandwritingService 需在 :hw 进程内
     // 手动 WorkManager.initialize()（自动初始化已在 manifest 中移除）而显式声明
-    implementation 'androidx.work:work-runtime:2.7.0'
-    implementation "androidx.room:room-runtime:2.6.1"
-    ksp "androidx.room:room-compiler:2.6.1"
-    implementation "androidx.room:room-ktx:2.6.1"
+    implementation libs.androidx.work.runtime
+    implementation libs.androidx.room.runtime
+    ksp libs.androidx.room.compiler
+    implementation libs.androidx.room.ktx
 }
-
-tasks.register('makeaar', Copy) {
-    from('build/outputs/aar/')
-    into('build/outputs/aar/')
-    include('imeModule-dev-debug.aar')
-    rename('imeModule-dev-debug.aar', 'imesdk_' + rootProject.ext.appVersionName + '.aar')
-}
-
-makeaar.dependsOn(build)
