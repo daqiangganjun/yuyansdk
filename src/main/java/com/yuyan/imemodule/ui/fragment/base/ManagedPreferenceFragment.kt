@@ -1,7 +1,6 @@
 
 package com.yuyan.imemodule.ui.fragment.base
 
-import android.os.Build
 import android.os.Bundle
 import androidx.annotation.CallSuper
 import androidx.lifecycle.lifecycleScope
@@ -38,9 +37,7 @@ abstract class ManagedPreferenceFragment(private vararg val preferenceProvider: 
     }
 
     override fun onStop() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            AppPrefs.getInstance().syncToDeviceEncryptedStorage()
-        }
+        AppPrefs.getInstance().syncToDeviceEncryptedStorage()
         super.onStop()
     }
 

@@ -17,6 +17,7 @@ object CustomConstant {
     const val SCHEMA_ZH_STROKE = "stroke" // 五笔画
     const val CURRENT_RIME_DICT_DATA_VERSIOM = 20260325
     const val YUYAN_IME_REPO = "https://github.com/daqiangganjun/YuyanSelfOpt"
+    const val YUYAN_IME_RELEASES_API = "https://api.github.com/repos/daqiangganjun/YuyanSelfOpt/releases"
     const val UPSTREAM_IME_REPO = "https://github.com/gurecn/YuyanIme"
     const val LICENSE_URL = "https://github.com/daqiangganjun/YuyanSelfOpt/blob/master/LICENSE"
     const val FEEDBACK_TXC_REPO = "https://github.com/daqiangganjun/YuyanSelfOpt/issues"

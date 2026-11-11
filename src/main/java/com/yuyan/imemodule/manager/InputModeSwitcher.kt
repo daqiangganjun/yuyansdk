@@ -197,6 +197,28 @@ object InputModeSwitcher {
 
     var isTerminalMode = false
         private set
+
+    /** 物理键盘模式，由 ImeService 按显示判定同步 */
+    var isHardwareKeyboard = false
+        private set
+
+    fun setHardwareKeyboard(hardware: Boolean) {
+        if (isHardwareKeyboard == hardware) return
+        isHardwareKeyboard = hardware
+        if (isChinese) saveInputMode(mInputMode)
+    }
+
+    /**
+     * 当前应使用的中文方案。物理键盘只能键入字母，九键、乱序17、笔画与手写的按键码在其上无从输入，
+     * 改用全拼；双拼按字母键位排布，照常使用。偏好与软键盘布局保持不变，回到软键盘即恢复原方案。
+     */
+    private val chineseSchema: String
+        get() {
+            val schema = getInstance().internal.pinyinModeRime.getValue()
+            val typable = schema == CustomConstant.SCHEMA_ZH_QWERTY ||
+                schema.startsWith(CustomConstant.SCHEMA_ZH_DOUBLE_FLYPY) && schema != CustomConstant.SCHEMA_ZH_DOUBLE_LX17
+            return if (isHardwareKeyboard && !typable) CustomConstant.SCHEMA_ZH_QWERTY else schema
+        }
     private var modeBeforeTerminal = MODE_UNSET
     private var recentModeBeforeTerminal = MODE_UNSET
 
@@ -362,7 +384,7 @@ object InputModeSwitcher {
     fun saveInputMode(newInputMode: Int) {
         mInputMode = newInputMode // 设置新的输入法模式为当前的输入法模式
         if (isChinese || isEnglish && !isTerminalMode) Kernel.initImeSchema(
-            if (isEnglish) CustomConstant.SCHEMA_EN else getInstance().internal.pinyinModeRime.getValue())
+            if (isEnglish) CustomConstant.SCHEMA_EN else chineseSchema)
         if (isChinese || isEnglish) {
             mRecentLauageInputMode = mInputMode
             if (!isTerminalMode) getInstance().internal.inputDefaultMode.setValue(mInputMode)

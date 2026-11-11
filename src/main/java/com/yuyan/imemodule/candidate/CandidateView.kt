@@ -67,11 +67,14 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
             }
         }
         mSkbRoot.addView(engineStatus, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        // 本视图在首个按键产生候选后才挂到窗口，观察者此时激活会收到未变的状态，不能借此清掉刚开始的组合
+        var observedStatus: EngineRuntime.Status? = null
         EngineRuntime.status.observe(this) { state ->
             engineStatus.text = state.message
             engineStatus.visibility = if (state.phase == EngineRuntime.Phase.Ready) GONE else VISIBLE
             engineStatus.bringToFront()
-            DecodingInfo.reset()
+            if (observedStatus != null && observedStatus != state) DecodingInfo.reset()
+            observedStatus = state
         }
         initView()
     }
@@ -117,10 +120,13 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
 
     // Ctrl+Space 的按下已被消费，抬起时据此切换语言，与先松开哪个键无关
     private var languageSwitchPending = false
+    // 组合中按下 Esc 或返回键：抬起时取消组合，而非由系统收起候选窗口而留下看不见的组合
+    private var cancelPending = false
 
     fun processKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         languageSwitchPending = keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed
-        return languageSwitchPending || isChineseInputKey(event)
+        cancelPending = (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BACK) && !DecodingInfo.isCandidatesEmpty
+        return languageSwitchPending || cancelPending || isChineseInputKey(event)
     }
 
     fun processKeyUp(event: KeyEvent): Boolean {
@@ -128,6 +134,11 @@ class CandidateView(context: Context, private val service: ImeService) : Lifecyc
         if (keyCode == KeyEvent.KEYCODE_SPACE && languageSwitchPending) {
             languageSwitchPending = false
             switchLanguage()
+            return true
+        }
+        if ((keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BACK) && cancelPending) {
+            cancelPending = false
+            resetToIdleState()
             return true
         }
         if (!isChineseInputKey(event)) return false

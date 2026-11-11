@@ -74,8 +74,8 @@ class FloatCandidatesBarAdapter(context: Context?) :
         val visibleNo = position - firstVisiblePosition + 1
         val indexText = if (visibleNo in 1..9) "$visibleNo. " else ""
         if (holder.textViewIndex.text.toString() != indexText) holder.textViewIndex.text = indexText
-        val activePosition = if (activeCandidatePosition != RecyclerView.NO_POSITION) activeCandidatePosition else firstVisiblePosition
-        val textColor = if (activePosition == position) activeTheme.accentKeyBackgroundColor else activeTheme.keyTextColor
+        // 与软键盘候选栏一致，只在方向键选中后高亮；未选中时空格上屏当前页首个候选
+        val textColor = if (activeCandidatePosition == position) activeTheme.accentKeyBackgroundColor else activeTheme.keyTextColor
         holder.textViewIndex.setTextColor(textColor)
         holder.textViewCandidate.setTextColor(textColor)
     }

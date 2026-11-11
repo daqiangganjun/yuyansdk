@@ -2,8 +2,6 @@
 package com.yuyan.imemodule.prefs
 
 import android.content.SharedPreferences
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.yuyan.imemodule.R
@@ -375,7 +373,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             }
         }
 
-    @RequiresApi(Build.VERSION_CODES.N)
     fun syncToDeviceEncryptedStorage() {
         val ctx = Launcher.instance.context.createDeviceProtectedStorageContext()
         val sp = PreferenceManager.getDefaultSharedPreferences(ctx)

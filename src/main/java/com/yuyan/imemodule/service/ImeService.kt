@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import android.graphics.Rect
 import android.graphics.Region
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.os.SystemClock
 import android.text.InputType
 import android.view.KeyCharacterMap
@@ -17,6 +18,9 @@ import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.Observer
 import com.yuyan.imemodule.candidate.CandidateView
 import com.yuyan.imemodule.data.emojicon.YuyanEmojiCompat
 import com.yuyan.imemodule.data.theme.Theme
@@ -36,6 +40,7 @@ import com.yuyan.imemodule.utils.KeyboardLoaderUtil
 import com.yuyan.imemodule.view.popup.PopupComponent
 import com.yuyan.imemodule.utils.isDarkMode
 import com.yuyan.imemodule.view.preference.ManagedPreference
+import com.yuyan.inputmethod.core.CandidateListItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -72,7 +77,10 @@ class ImeService : InputMethodService() {
     val activeInputConnection: InputConnection?
         get() = mInputView?.localInputConnection ?: currentInputConnection
     private var mCandidateView: CandidateView? = null
+    // 当前交给输入法窗口的输入视图：软键盘为 InputView，物理键盘为 CandidateView
+    private var modeInputView: View? = null
     private var watchedInputWindow: Window? = null
+    private val hardwareCandidatesObserver = Observer<List<CandidateListItem>> { syncHardwareCandidatesWindow() }
     private val onThemeChangeListener = OnThemeChangeListener { _: Theme? -> if (isHardwareKeyboard) mCandidateView?.updateTheme() else mInputView?.updateTheme()}
     private val clipboardUpdateContent = getInstance().internal.clipboardUpdateContent
     private val clipboardUpdateContentListener = ManagedPreference.OnChangeListener<String> { _, value ->
@@ -92,15 +100,35 @@ class ImeService : InputMethodService() {
         InputModeSwitcher.reset()
         addOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.registerOnChangeListener(clipboardUpdateContentListener)
+        DecodingInfo.candidatesLiveData.observeForever(hardwareCandidatesObserver)
     }
 
     override fun onCreateInputView(): View {
         watchOutsideTouches()
+        return createModeInputView()
+    }
+
+    /**
+     * 按当前模式取输入视图。视图从窗口移除后生命周期即为 DESTROYED、观察者已被清空，
+     * 因此切换模式或系统重建窗口时都要新建，不能复用旧实例。
+     */
+    private fun createModeInputView(): View = if (isHardwareKeyboard) hardwareCandidateView() else {
         mInputView?.finishAuxiliaryInput()
         voiceInput?.cancel()
         voiceInput = null
-        return InputView(baseContext, this).also { mInputView = it }
+        InputView(baseContext, this).also { mInputView = it }
     }
+
+    /**
+     * 物理键盘的候选界面。窗口要等出现候选才显示，而产生候选的按键须先经它处理，
+     * 故进入物理键盘模式即创建，尚未挂到窗口上的实例留待系统取输入视图时交出。
+     */
+    private fun hardwareCandidateView(): CandidateView =
+        mCandidateView?.takeIf { it.lifecycle.currentState != Lifecycle.State.DESTROYED }
+            ?: CandidateView(baseContext, this).also {
+                mCandidateView = it
+                it.onStartInput(currentInputEditorInfo, false)
+            }
 
     private fun watchOutsideTouches() {
         val inputWindow = window?.window ?: return
@@ -116,15 +144,24 @@ class ImeService : InputMethodService() {
         watchedInputWindow = inputWindow
     }
 
-    override fun onCreateCandidatesView(): View {
-        return CandidateView(baseContext, this).also {
-            mCandidateView = it
-            if (isHardwareKeyboard) it.onStartInput(currentInputEditorInfo, false)
+    /**
+     * 与按键路由共用 handleHardwareKeyboard 的判定，避免显示软键盘却按物理键盘分发按键。
+     * 物理键盘模式只在有候选时显示候选栏：Android 11 起窗口可见性由宿主的 IME insets 控制，
+     * 仅靠 setCandidatesViewShown 的候选窗口不会被绘制，故改作输入视图并按需显式请求显示。
+     */
+    override fun onEvaluateInputViewShown(): Boolean = isSoftKeyboard || isHardwareKeyboard && !DecodingInfo.isCandidatesEmpty
+
+    private fun syncHardwareCandidatesWindow() {
+        if (!isHardwareKeyboard || currentInputConnection == null) return
+        val wanted = !DecodingInfo.isCandidatesEmpty
+        if (wanted == isInputViewShown) return
+        if (!wanted) requestHideSelf(0)
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) requestShowSelf(0)
+        else window?.window?.attributes?.token?.let {
+            @Suppress("DEPRECATION")
+            getSystemService(InputMethodManager::class.java).showSoftInputFromInputMethod(it, 0)
         }
     }
-
-    // 与按键路由共用 handleHardwareKeyboard 的判定，避免显示软键盘却按物理键盘分发按键
-    override fun onEvaluateInputViewShown(): Boolean = isSoftKeyboard
 
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         cancelVoiceInput()
@@ -175,6 +212,7 @@ class ImeService : InputMethodService() {
         super.onDestroy()
         removeOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.unregisterOnChangeListener(clipboardUpdateContentListener)
+        DecodingInfo.candidatesLiveData.removeObserver(hardwareCandidatesObserver)
         serviceScope.cancel()
         // 单例持有整棵输入视图树与本 Service，不解除引用则进程常驻期间无法回收
         KeyboardManager.instance.release()
@@ -182,6 +220,7 @@ class ImeService : InputMethodService() {
         KeyboardLoaderUtil.instance.clearKeyboardMap()
         mInputView = null
         mCandidateView = null
+        modeInputView = null
     }
 
     /**
@@ -230,6 +269,9 @@ class ImeService : InputMethodService() {
 
     override fun setInputView(view: View) {
         super.setInputView(view)
+        modeInputView = view
+        // 候选栏按内容高度停靠在窗口底部，靠底部留白跟随光标，不能撑满窗口
+        if (view !is InputView) return
         val layoutParams = view.layoutParams
         if (layoutParams != null && layoutParams.height != ViewGroup.LayoutParams.MATCH_PARENT) {
             layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
@@ -459,11 +501,19 @@ class ImeService : InputMethodService() {
      * 读取的是当前 Resources 配置；onConfigurationChanged 回调时它已更新为新配置。
      */
     fun handleHardwareKeyboard() {
+        val wasHardwareKeyboard = isHardwareKeyboard
         isSoftKeyboard = getInstance().keyboardSetting.showVirtualKeyboardOnPhysicalKeyboard.getValue() || super.onEvaluateInputViewShown()
         isHardwareKeyboard = !isSoftKeyboard
-        setCandidatesViewShown(isHardwareKeyboard)
+        InputModeSwitcher.setHardwareKeyboard(isHardwareKeyboard)
+        if (isHardwareKeyboard) hardwareCandidateView()
+        // 窗口已建过输入视图时才需替换；尚未创建的由系统在需要时经 onCreateInputView 按模式创建
+        if (wasHardwareKeyboard != isHardwareKeyboard && modeInputView != null) {
+            setInputView(createModeInputView())
+            syncHardwareCandidatesWindow()
+        }
         // 未绑定输入连接时（如息屏后切换深色模式）为 null
-        currentInputConnection?.requestCursorUpdates(if(isHardwareKeyboard)InputConnection.CURSOR_UPDATE_MONITOR else 0)
+        currentInputConnection?.requestCursorUpdates(if (isHardwareKeyboard)
+            InputConnection.CURSOR_UPDATE_IMMEDIATE or InputConnection.CURSOR_UPDATE_MONITOR else 0)
     }
 
 }
