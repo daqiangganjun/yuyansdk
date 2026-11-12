@@ -11,6 +11,8 @@ class HandwritingSession(
         val ink = InkStrokes()
         var revision = 0L
         var result: HandwritingResult? = null
+        // 落笔后旧结果作废，但在新结果到达前仍用于显示，避免候选栏随每一笔闪回工具栏
+        var shown: HandwritingResult? = null
         var cancel: (() -> Unit)? = null
         var stopped = false
         var sealed = false
@@ -20,6 +22,8 @@ class HandwritingSession(
     private val characters = ArrayList<Character>()
     private var current: Character? = null
     private var drawing = false
+    // 本次书写已完成的笔画数；首笔写完后直到书写结束都不再退回工具栏
+    private var completedStrokes = 0
     private var preview: String? = null
     val hasInput: Boolean get() = characters.isNotEmpty()
     val isStopped: Boolean get() = current?.stopped == true
@@ -49,6 +53,7 @@ class HandwritingSession(
         val character = current ?: return
         if (!drawing) return
         drawing = false
+        completedStrokes++
         character.ink.endStroke()
         val revision = character.revision
         publish()
@@ -57,6 +62,7 @@ class HandwritingSession(
             character.cancel = null
             character.result = if (result is HandwritingResult.Candidates && result.texts.isEmpty())
                 HandwritingResult.Empty else result
+            character.shown = character.result
             drain()
             publish()
         }
@@ -95,6 +101,7 @@ class HandwritingSession(
         characters.clear()
         current = null
         drawing = false
+        completedStrokes = 0
         preview = null
         previous.forEach { it.cancel?.invoke() }
         publish()
@@ -113,7 +120,8 @@ class HandwritingSession(
 
     private fun publish() {
         val character = current
-        onUpdate(character?.result, hasInput && !drawing && character?.result == null)
+        val shown = character?.shown
+        onUpdate(shown, hasInput && shown == null && (!drawing || completedStrokes > 0))
         if (character != null && characters.firstOrNull() === character && character.stopped && !drawing) {
             val text = (character.result as? HandwritingResult.Candidates)?.texts?.firstOrNull()
             if (text != null && text != preview) {

@@ -101,6 +101,19 @@ class ImeService : InputMethodService() {
         addOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.registerOnChangeListener(clipboardUpdateContentListener)
         DecodingInfo.candidatesLiveData.observeForever(hardwareCandidatesObserver)
+        suppressDefaultFocusHighlight()
+    }
+
+    /**
+     * 宿主让屏幕退出触摸模式后（如 Termius 处理退格键），系统会把焦点交给输入法窗口中的首个可聚焦控件，
+     * 并为其绘制默认焦点框。输入法窗口从不获得窗口焦点，无法自行回到触摸模式，焦点框会一直留着。
+     * 全局焦点变化先于 onFocusChanged 分发，在此关闭默认焦点框即可避免它被创建。
+     */
+    private fun suppressDefaultFocusHighlight() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        window?.window?.decorView?.viewTreeObserver?.addOnGlobalFocusChangeListener { _, newFocus ->
+            newFocus?.defaultFocusHighlightEnabled = false
+        }
     }
 
     override fun onCreateInputView(): View {
